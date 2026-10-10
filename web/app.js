@@ -22,12 +22,22 @@ async function api(url, options) {
   const data = await response.json(); if (!response.ok) throw new Error(data.error || '请求失败，请重试。'); return data;
 }
 const post = (url, data) => api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-async function imageSource(url) {
-  if (!embed) return url;
-  if (!imageCache.has(url)) imageCache.set(url, (async () => { const response = await localFetch(url); if (!response.ok) throw new Error('图片加载失败，请重新打开面板。'); return URL.createObjectURL(await response.blob()); })().catch(error => { imageCache.delete(url); throw error; }));
+async function imageData(url) {
+  if (!imageCache.has(url)) imageCache.set(url, (async () => {
+    const response = await localFetch(url);
+    if (!response.ok) throw new Error('图片读取失败，请重新打开面板。');
+    const blob = await response.blob();
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(blob.type) || !blob.size) throw new Error('图片内容无效，请重新打开面板。');
+    return { blob, url: URL.createObjectURL(blob) };
+  })().catch(error => { imageCache.delete(url); throw error; }));
   return imageCache.get(url);
 }
-function setImage(img, assetOrUrl) { void imageSource(typeof assetOrUrl === 'string' ? assetOrUrl : assetOrUrl.url).then(url => { img.src = url; }).catch(error => toast(error.message)); }
+async function imageSource(url) { return embed ? (await imageData(url)).url : url; }
+function setImage(img, assetOrUrl) {
+  const assetUrl = typeof assetOrUrl === 'string' ? assetOrUrl : assetOrUrl.url;
+  img.onerror = () => toast('图片显示失败，请刷新 Imageboard 面板后重试。');
+  void imageSource(assetUrl).then(url => { img.src = url; }).catch(error => toast(error.message));
+}
 function imageElement(asset, alt = '') { const img = el('img'); img.alt = alt; img.loading = 'lazy'; setImage(img, asset); return img; }
 function preview(asset) { setImage($('#preview-image'), asset); $('#preview-image').alt = asset.name || '图片预览'; $('#preview-dialog').showModal(); }
 function downloadLink(asset) {
@@ -35,7 +45,7 @@ function downloadLink(asset) {
   if (!embed) link.href = `${asset.url}?download=1`;
   else {
     link.setAttribute('role', 'button'); link.tabIndex = 0;
-    link.onclick = async event => { event.preventDefault(); try { const url = await imageSource(asset.url); if (mcp && await mcp.download(await (await fetch(url)).blob(), link.download)) return; const a = el('a'); a.href = url; a.download = link.download; document.body.append(a); a.click(); a.remove(); } catch (error) { toast(error.message); } };
+    link.onclick = async event => { event.preventDefault(); try { const { blob, url } = await imageData(asset.url); if (mcp && await mcp.download(blob, link.download)) return; const a = el('a'); a.href = url; a.download = link.download; document.body.append(a); a.click(); a.remove(); } catch (error) { toast(error.message); } };
     link.onkeydown = event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); link.click(); } };
   }
   return link;
@@ -341,7 +351,7 @@ document.addEventListener('dragenter',event=>{if(event.dataTransfer?.types.inclu
 document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault();});
 document.addEventListener('dragleave',()=>{dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)$('#drop-overlay').hidden=true;});
 document.addEventListener('drop',event=>{dragDepth=0;$('#drop-overlay').hidden=true;if(event.dataTransfer?.files.length){event.preventDefault();if(!document.querySelector('dialog[open]'))void uploadFiles(event.dataTransfer.files);}});
-window.addEventListener('beforeunload',()=>{state.source?.close();for(const cached of imageCache.values())void cached.then(url=>URL.revokeObjectURL(url)).catch(()=>{});});
+window.addEventListener('beforeunload',()=>{state.source?.close();for(const cached of imageCache.values())void cached.then(image=>URL.revokeObjectURL(image.url)).catch(()=>{});});
 setInterval(updateElapsed,1000);render();await refreshConfig();
 try{state.jobs=await api('/api/jobs');const running=state.jobs.find(active);if(running){state.selected=running.id;restoreSettings(running);state.references=(running.references||[]).map(ref=>({...ref}));state.parent=running.parent;state.edit=draftEdit(running);watch(running);}render();}catch(error){toast(error.message);}
 if(!mcp&&window.parent!==window)window.parent.postMessage({type:'codex-imageboard-ready'},'*');

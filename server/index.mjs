@@ -69,7 +69,7 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
     }
     try {
       const url = new URL(req.url, origin);
-      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'codex-imageboard', version: '0.3.1', native: !!accessToken }); return; }
+      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'codex-imageboard', version: '0.3.2', native: !!accessToken }); return; }
       if (req.method === 'GET' && url.pathname === '/api/embed-document') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(await embeddedDocument(root, origin, capability)); return;

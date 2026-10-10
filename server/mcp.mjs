@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createBridge } from './mcp-bridge.mjs';
 import { mcpDocument } from './embed.mjs';
+import { UI_CSP } from './ui-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
@@ -32,7 +33,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [{ uri: resourceUri, name: 'Imageboard', mimeType }] }));
 server.setRequestHandler(ReadResourceRequestSchema, async ({ params }) => {
   if (params.uri !== resourceUri) throw new Error('Unknown Imageboard resource');
-  return { contents: [{ uri: resourceUri, mimeType, text: await mcpDocument(root), _meta: { ui: { prefersBorder: false, csp: { connectDomains: [], resourceDomains: [] } } } }] };
+  return { contents: [{ uri: resourceUri, mimeType, text: await mcpDocument(root), _meta: { ui: { prefersBorder: false, csp: UI_CSP } } }] };
 });
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
   try {

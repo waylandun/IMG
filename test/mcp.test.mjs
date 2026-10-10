@@ -23,6 +23,7 @@ test('MCP discovery and resource loading do not start the image service or expos
   assert.ok(tools.filter(x => x !== entry).every(x => x._meta.ui.visibility.join() === 'app'));
   const resource = await client.readResource({ uri: entry._meta.ui.resourceUri });
   assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
+  assert.deepEqual(resource.contents[0]._meta.ui.csp, { connectDomains: [], resourceDomains: ['data:', 'blob:'] });
   assert.ok(resource.contents[0].text.includes('__IMAGEBOARD_MCP__'));
   assert.ok(resource.contents[0].text.includes('function createEditor'));
   assert.equal((resource.contents[0].text.match(/<script\b/g) || []).length, 1);

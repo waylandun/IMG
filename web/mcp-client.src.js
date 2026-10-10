@@ -1,6 +1,6 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 
-const app = new App({ name: 'Imageboard', version: '0.3.1' }, {}, { autoResize: false });
+const app = new App({ name: 'Imageboard', version: '0.3.2' }, {}, { autoResize: false });
 function hostTheme(theme) {
   if (theme === 'light' || theme === 'dark') window.dispatchEvent(new CustomEvent('imageboard-host-theme', { detail: { theme } }));
 }
@@ -24,7 +24,9 @@ async function response(result) {
     while (offset < size) {
       const part = await call('imageboard_transfer', { action: 'read_chunk', id, offset });
       if (part.nextOffset <= offset || part.nextOffset > size) throw new Error('图片传输异常。');
-      chunks.push(Uint8Array.from(atob(part.data), x => x.charCodeAt(0))); offset = part.nextOffset;
+      const bytes = Uint8Array.from(atob(part.data), x => x.charCodeAt(0));
+      if (bytes.length !== part.nextOffset - offset) throw new Error('图片传输不完整，请重新加载。');
+      chunks.push(bytes); offset = part.nextOffset;
     }
     return new Response(new Blob(chunks, { type }), { status: result.status, headers: { 'Content-Type': type } });
   } finally { void call('imageboard_transfer', { action: 'release', id }).catch(() => {}); }
