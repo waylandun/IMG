@@ -1,0 +1,38 @@
+{
+  "name": "codex-imageboard",
+  "version": "0.3.1",
+  "private": true,
+  "type": "module",
+  "description": "复用 Codex 配置的本地生图面板",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node --watch server/index.mjs",
+    "codex": "npm run build:ui && node scripts/codex.mjs",
+    "mcp": "node server/mcp.mjs",
+    "build:ui": "node scripts/build-ui.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm test",
+    "app:dev": "electron .",
+    "app:build": "node scripts/build-desktop.mjs all",
+    "app:build:mac": "node scripts/build-desktop.mjs mac",
+    "app:build:win": "node scripts/build-desktop.mjs win"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^2.0.3",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "sharp": "^0.35.5",
+    "smol-toml": "^1.4.2"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2"
+  },
+  "main": "desktop/main.cjs",
+  "productName": "Imageboard",
+  "author": "Imageboard",
+  "license": "UNLICENSED"
+}
