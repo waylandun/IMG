@@ -1,4 +1,4 @@
-export function createEditor({ imageSource, upload, onApply, notify }) {
+export function createEditor({ imageSource, upload, onApply, onClose, notify }) {
   const $ = selector => document.querySelector(selector);
   const dialog = $('#editor-dialog'), canvas = $('#edit-canvas'), ctx = canvas.getContext('2d');
   const selection = document.createElement('canvas'), selectionCtx = selection.getContext('2d');
@@ -9,6 +9,14 @@ export function createEditor({ imageSource, upload, onApply, notify }) {
   for (const x of [-12, 0, 12]) { hatchCtx.beginPath(); hatchCtx.moveTo(x, 0); hatchCtx.lineTo(x + 12, 12); hatchCtx.stroke(); }
   let asset, image, mode, tool = 'brush', drawing = false, startPoint, lastPoint, savedSelection;
   let undo = [], selected = false, loading = false, generation = 0;
+  const originalParent = dialog.parentElement;
+  let opened = false;
+  function finishClose() {
+    if (!opened) return;
+    opened = false; generation++; drawing = false;
+    dialog.classList.remove('inline-editor'); originalParent.append(dialog); onClose?.();
+  }
+  function close() { if (dialog.open) dialog.close(); finishClose(); }
   const margins = () => Object.fromEntries([...dialog.querySelectorAll('[data-edge]')].map(input => [input.dataset.edge, Number(input.value)]));
   function dimensions() {
     const edge = margins();
@@ -96,8 +104,10 @@ export function createEditor({ imageSource, upload, onApply, notify }) {
     for (const input of dialog.querySelectorAll('[data-edge]')) input.value = button.dataset.expand === 'all' || (button.dataset.expand === 'horizontal' ? ['left', 'right'] : ['top', 'bottom']).includes(input.dataset.edge) ? '25' : '0';
     paint();
   };
-  $('#close-editor').onclick = () => dialog.close();
-  dialog.addEventListener('close', () => { generation++; drawing = false; });
+  $('#close-editor').onclick = close;
+  dialog.addEventListener('close', () => { if (!dialog.open) finishClose(); });
+  dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+  dialog.addEventListener('keydown', event => { if (dialog.classList.contains('inline-editor') && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); } });
   $('#apply-edit').onclick = async () => {
     loading = true; paint(); const currentGeneration = generation;
     try {
@@ -112,18 +122,25 @@ export function createEditor({ imageSource, upload, onApply, notify }) {
         edit = { type: 'inpaint', maskId: mask.id, sourceId: asset.id };
       } else edit = { type: 'outpaint', margins: margins(), sourceId: asset.id };
       if (currentGeneration !== generation) return;
-      onApply(edit); dialog.close();
+      onApply(edit); close();
     } catch (error) { notify(error.message); }
     finally { loading = false; paint(); }
   };
   return {
-    async open(source, type) {
+    close,
+    async open(source, type, { container } = {}) {
+      close();
       const ticket = ++generation; loading = true; image = null; asset = source; mode = type; undo = []; selected = false;
+      tool = 'brush';
+      dialog.querySelectorAll('[data-tool]').forEach(button => button.classList.toggle('selected', button.dataset.tool === tool));
+      dialog.querySelectorAll('[data-edge]').forEach(input => { input.value = ['left', 'right'].includes(input.dataset.edge) ? '25' : '0'; });
+      if (container) { container.append(dialog); dialog.classList.add('inline-editor'); }
       $('#editor-title').textContent = mode === 'inpaint' ? '局部重绘' : '扩展画布';
       $('#editor-description').textContent = mode === 'inpaint' ? '涂抹或框选想改变的部分，应用后输入修改要求。未选中的区域会保留原图。' : '设置四周扩展比例，透明区域由 AI 补全，原图内容保持不变。';
       $('#mask-tools').hidden = mode !== 'inpaint'; $('#outpaint-tools').hidden = mode !== 'outpaint';
       $('#apply-edit').textContent = mode === 'inpaint' ? '应用选区' : '应用扩图'; $('#apply-edit').disabled = true;
-      $('#editor-info').textContent = '正在加载原图…'; ctx.clearRect(0, 0, canvas.width, canvas.height); dialog.showModal();
+      $('#editor-info').textContent = '正在加载原图…'; ctx.clearRect(0, 0, canvas.width, canvas.height); opened = true;
+      if (container) dialog.show(); else dialog.showModal();
       try {
         const loaded = new Image(); loaded.src = await imageSource(asset.url); await loaded.decode();
         if (ticket !== generation) return;
@@ -132,7 +149,7 @@ export function createEditor({ imageSource, upload, onApply, notify }) {
           const scale = Math.min(1, 1600 / Math.max(asset.width, asset.height));
           canvas.width = selection.width = Math.round(asset.width * scale); canvas.height = selection.height = Math.round(asset.height * scale);
         }
-      } catch (error) { notify(error.message || '图片加载失败'); dialog.close(); }
+      } catch (error) { if (ticket === generation) { notify(error.message || '图片加载失败'); close(); } }
       finally { if (ticket === generation) { loading = false; paint(); } }
     },
   };

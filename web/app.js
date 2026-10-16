@@ -1,12 +1,15 @@
 import { createEditor } from './editor.js';
 import { initTheme } from './theme.js';
+import { createReferenceEditor } from './reference-editor.js';
+import { createConfigPanel } from './config-panel.js';
 
 initTheme();
 
 const $ = selector => document.querySelector(selector);
 const mcp = window.__IMAGEBOARD_MCP__, embed = window.__IMAGEBOARD_EMBED__ || (mcp ? { mcp: true } : null), imageCache = new Map();
 const state = { config: null, jobs: [], selected: null, outputIndex: 0, view: 'studio', references: [], parent: null, edit: null, source: null, sending: false, uploading: false, galleryFilter: 'all', search: '', managing: null };
-const ROLES = { base: '编辑原图', subject: '主体外观', style: '视觉风格', composition: '画面构图', color: '色彩搭配', background: '背景场景', general: '综合参考' };
+state.editingResult = null; state.advancedOpen = false;
+let referenceEditor;
 const labels = { refining: '理解你的想法', generating: '正在创建图像', completed: '已完成', prepared: '提示词已就绪', failed: '生成失败', cancelled: '已停止' };
 const active = job => job && ['refining', 'generating'].includes(job.status);
 const busy = () => state.sending || state.uploading || state.jobs.some(active);
@@ -22,6 +25,16 @@ async function api(url, options) {
   const data = await response.json(); if (!response.ok) throw new Error(data.error || '请求失败，请重试。'); return data;
 }
 const post = (url, data) => api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+const configPanel = createConfigPanel({ api, notify: toast, onConfig: config => {
+  state.config = config;
+  const label = `${config.channelName || 'Codex 扫描配置'} · ${config.imageModel || '未配置'}`;
+  $('#connection-label').textContent = label;
+  $('#connection').title = `模型与连接配置：${label}`;
+  $('#connection').classList.toggle('not-ready', !config.ready);
+  const warning = !config.ready ? config.error : !config.promptReady ? `提示词优化不可用，将直接生图：${config.promptError}` : '';
+  $('#config-warning').hidden = !warning; $('#config-warning').textContent = warning;
+  updateControls();
+} });
 async function imageData(url) {
   if (!imageCache.has(url)) imageCache.set(url, (async () => {
     const response = await localFetch(url);
@@ -56,62 +69,52 @@ async function upload(blob, name, mask = false) {
   return api(`/api/assets${mask ? '?mask=1' : ''}`, { method: 'POST', headers: { 'Content-Type': mime, 'X-Imageboard-Filename': encodeURIComponent(name || '参考图.png') }, body: blob });
 }
 async function uploadFiles(files) {
-  if (busy()) { toast('请等待当前操作结束后再添加图片。'); return; }
+  if (busy() || state.advancedOpen) { toast('请等待当前操作结束后再添加图片。'); return; }
   const list = [...files]; if (!list.length) return;
-  if (state.references.length + list.length > 16) { toast('包括编辑原图在内，最多添加 16 张参考图。'); return; }
+  if (state.references.length + list.length > 16) { toast('最多添加 16 张参考图。'); return; }
   if (state.view === 'gallery') newImage();
   state.uploading = true; updateControls();
   try {
-    for (const file of list) { const asset = await upload(file, file.name); state.references.push({ assetId: asset.id, asset, role: state.references.length ? 'general' : 'base', note: '' }); renderReferences(); }
+    for (const file of list) { const asset = await upload(file, file.name); state.references.push({ assetId: asset.id, asset, role: 'general', note: '' }); renderReferences(); }
     toast(`已添加 ${list.length} 张参考图`);
   } catch (error) { toast(error.message); }
-  finally { state.uploading = false; renderReferences(); updateControls(); }
+  finally { state.uploading = false; renderReferences(); updateControls(); $('#prompt').focus(); }
 }
 function clearEdit() { state.edit = null; }
 function removeReference(index) {
+  if (busy()) return;
   const ref = state.references[index];
   if (state.parent?.assetId === ref.assetId) state.parent = null;
   if (index === 0) clearEdit(); state.references.splice(index, 1); renderReferences(); updateControls();
-}
-function moveReference(from, to) {
-  if (to < 0 || to >= state.references.length || from === to) return;
-  if (state.parent && (from === 0 || to === 0)) { toast('连续编辑的原图固定在图1；移除它后可自由排序。'); return; }
-  const [ref] = state.references.splice(from, 1); state.references.splice(to, 0, ref); clearEdit(); renderReferences();
+  const remaining = document.querySelectorAll('.reference-remove');
+  (remaining[Math.min(index, remaining.length - 1)] || $('#upload-reference')).focus();
 }
 function renderReferences() {
-  const root = $('#reference-list'); root.replaceChildren(); root.hidden = !state.references.length;
+  const root = $('#reference-list'); root.replaceChildren();
   state.references.forEach((ref, index) => {
-    const card = el('div', 'reference-card'); card.draggable = !busy();
-    card.ondragstart = event => { event.dataTransfer.setData('application/x-imageboard-reference', String(index)); event.dataTransfer.effectAllowed = 'move'; };
-    card.ondragover = event => { if (event.dataTransfer.types.includes('application/x-imageboard-reference')) event.preventDefault(); };
-    card.ondrop = event => { const from = event.dataTransfer.getData('application/x-imageboard-reference'); if (from !== '') { event.preventDefault(); event.stopPropagation(); moveReference(Number(from), index); } };
-    const thumb = button('', () => preview(ref.asset), 'reference-thumb'); thumb.setAttribute('aria-label', `查看参考图${index + 1}`); thumb.append(imageElement(ref.asset));
-    const info = el('div', 'reference-info'); info.append(el('strong', '', `图${index + 1} · ${ref.asset.name}`));
-    const role = el('select'); role.setAttribute('aria-label', `图${index + 1}用途`);
-    Object.entries(ROLES).forEach(([value, text]) => { const option = el('option', '', text); option.value = value; role.append(option); }); role.value = ref.role;
-    role.disabled = busy() || (index === 0 && !!state.parent); role.onchange = () => { ref.role = role.value; };
-    const note = el('input'); note.placeholder = '补充说明，例如保留人物衣服'; note.maxLength = 300; note.value = ref.note; note.setAttribute('aria-label', `图${index + 1}说明`); note.disabled = busy(); note.oninput = () => { ref.note = note.value; };
-    const controls = el('div', 'reference-actions');
-    for (const [label, action, disabled] of [['←', () => moveReference(index, index - 1), index === 0], ['→', () => moveReference(index, index + 1), index === state.references.length - 1], ['×', () => removeReference(index), false]]) {
-      const control = button(label, action); control.disabled = disabled || busy(); control.setAttribute('aria-label', `${label === '×' ? '移除' : label === '←' ? '前移' : '后移'}参考图${index + 1}`); controls.append(control);
-    }
-    info.append(role, note); card.append(thumb, info, controls); root.append(card);
+    if (state.editingResult?.ref === ref) return;
+    const card = el('div', 'reference-card');
+    const thumb = button('', () => referenceEditor.open(ref, { readOnly: busy() }), 'reference-thumb'); thumb.setAttribute('aria-label', `查看参考图${index + 1}`); thumb.title = ref.asset.name; thumb.append(imageElement(ref.asset));
+    if (ref.comments?.length) thumb.append(el('span', 'reference-comment-badge', `${ref.comments.length} 条评论`));
+    const remove = button('', () => removeReference(index), 'reference-remove'); remove.disabled = busy(); remove.setAttribute('aria-label', `移除参考图${index + 1}`); remove.title = '移除图片'; remove.append($('#reference-remove-icon').content.cloneNode(true));
+    card.append(thumb, remove); root.append(card);
   });
+  root.hidden = !root.childElementCount;
   const context = $('#edit-context'); context.replaceChildren(); context.hidden = !state.parent && !state.edit;
-  if (state.parent) context.append(el('span', '', `正在编辑「${title(state.jobs.find(j => j.id === state.parent.jobId) || { prompt: '历史版本' })}」的方案 ${state.parent.outputIndex + 1}`));
+  if (state.parent && !state.editingResult) context.append(el('span', '', `正在编辑「${title(state.jobs.find(j => j.id === state.parent.jobId) || { prompt: '历史版本' })}」的方案 ${state.parent.outputIndex + 1}`));
   if (state.edit) {
     context.append(el('span', 'edit-badge', state.edit.type === 'inpaint' ? '已设置局部选区' : '已设置扩图画布'));
     const reset = button('取消选区', () => { clearEdit(); renderReferences(); }, 'text-button'); reset.disabled = busy(); context.append(reset);
   }
-  $('#reference-hint').textContent = state.uploading ? '正在上传…' : state.references.length ? `${state.references.length}/16 张 · 可拖动排序` : '支持拖入或粘贴图片';
+  context.hidden = !context.childElementCount;
+  resizeComposer();
 }
-function settings() { return { size: $('#size').value, quality: $('#quality').value, count: Number($('#count').value), format: $('#format').value, compression: Number($('#compression').value), background: $('#background').value, action: $('#action').value, optimize: $('#optimize').checked, useVision: $('#use-vision').checked }; }
+function settings() { return { size: $('#size').value, quality: $('#quality').value, count: Number($('#count').value), format: $('#format').value, compression: Number($('#compression').value), background: $('#background').value, action: 'none', optimize: $('#optimize').checked, useVision: $('#use-vision').checked }; }
 function restoreSettings(job) {
-  for (const [name, fallback] of [['size','auto'],['quality','auto'],['count',1],['format','png'],['compression',90],['background','auto'],['action','none']]) $(`#${name}`).value = job[name] ?? fallback;
+  for (const [name, fallback] of [['size','auto'],['quality','auto'],['count',1],['format','png'],['compression',90],['background','auto']]) $(`#${name}`).value = job[name] ?? fallback;
   $('#optimize').checked = job.optimize !== false; $('#use-vision').checked = job.useVision !== false; syncOutputOptions();
 }
 function syncOutputOptions() {
-  if ($('#action').value === 'remove-background') $('#background').value = 'transparent';
   if ($('#background').value === 'transparent' && $('#format').value === 'jpeg') { $('#format').value = 'png'; toast('透明背景已使用 PNG 格式'); }
   $('#compression-control').hidden = $('#format').value === 'png'; $('#compression-value').textContent = $('#compression').value;
 }
@@ -120,13 +123,25 @@ function baseOn(job, index = 0) {
   const asset = outputs(job)[index]; if (!asset) return;
   state.outputIndex = index; state.parent = { jobId: job.id, outputIndex: index, assetId: asset.id }; state.edit = null;
   state.references = [{ assetId: asset.id, asset, role: 'base', note: '保留未要求修改的内容' }, ...(job.references || []).filter(ref => ref.role !== 'base' && ref.role !== 'general' && ref.assetId !== asset.id).slice(0,15).map(ref => ({ ...ref }))];
-  $('#action').value = 'none'; renderReferences(); updateControls();
+  renderReferences(); updateControls();
 }
 function selectJob(job, index = 0) {
+  if (!closeResultEditor()) return;
   closeHistory(); state.selected = job.id; state.outputIndex = index; state.view = 'studio'; restoreSettings(job);
   if (job.status === 'completed' && !job.deletedAt) baseOn(job, index);
   else { state.references = (job.references || []).map(ref => ({ ...ref })); state.parent = job.parent || null; state.edit = draftEdit(job); }
   render();
+}
+function closeResultEditor() { return !state.editingResult || referenceEditor.close(); }
+async function openResultEditor(job, index = 0) {
+  if (busy() || job.deletedAt || !outputs(job)[index]) return;
+  if (state.editingResult?.jobId === job.id && state.editingResult.index === index) { $('#reference-dialog').focus(); return; }
+  if (referenceEditor.isProcessing()) { toast('图片正在处理，请稍候。'); return; }
+  if (!referenceEditor.close()) return;
+  baseOn(job, index); state.editingResult = { jobId: job.id, index, ref: state.references[0] };
+  renderStage(); renderReferences(); updateControls();
+  await referenceEditor.open(state.editingResult.ref, { docked: true });
+  resizeComposer();
 }
 function updateJob(job) {
   const index = state.jobs.findIndex(item => item.id === job.id), previous = state.jobs[index];
@@ -215,6 +230,7 @@ function openCompare(job, index) {
 }
 async function manageJob(job, changes) {
   const next = await api(`/api/jobs/${job.id}`, { method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(changes) });
+  if (changes.deleted && state.editingResult?.jobId === job.id) referenceEditor.dismiss();
   updateJob(next);
   if (changes.deleted && state.parent?.jobId === job.id) { state.parent = null; state.references = []; clearEdit(); renderReferences(); }
   return next;
@@ -256,10 +272,11 @@ function renderStage() {
   const stage = $('#stage'); stage.replaceChildren(); stage.classList.toggle('gallery-stage',state.view === 'gallery'); $('#composer-area').hidden = state.view === 'gallery';
   if (state.view === 'gallery') { stage.append(renderGallery()); return; }
   const job = current(); if (!job) { stage.append(welcome()); return; }
-  const conversation = el('div','conversation'); conversation.append(el('div','user-message',job.prompt));
+  const conversation = el('div','conversation');
   if (job.references?.length) {
-    const inputs = el('div','input-references'); job.references.forEach((ref,i) => { const b = button('',()=>preview(ref.asset),'input-reference'); b.append(imageElement(ref.asset),el('span','',`图${i + 1} · ${ROLES[ref.role]}`)); inputs.append(b); }); conversation.append(inputs);
+    const inputs = el('div','input-references message-references'); job.references.forEach((ref,i) => { const b = button('',()=>referenceEditor.open(ref,{readOnly:true}),'input-reference'); b.setAttribute('aria-label',`查看消息参考图${i + 1}`); b.append(imageElement(ref.asset)); inputs.append(b); }); conversation.append(inputs);
   }
+  conversation.append(el('div','user-message',[job.prompt, commentMessage(job.references)].filter(Boolean).join('\n\n')));
   const output = el('div',`assistant-output${outputs(job).length > 1 ? ' multiple-output' : ''}`), status = el('div','output-status'); status.setAttribute('role','status');
   status.append(el('span',`spark${active(job) ? ' spinning' : ''}`,'✦'),el('strong','',`${labels[job.status]}${job.status === 'completed' ? ` · ${outputs(job).length} 个方案` : ''}`));
   if (active(job)) { const time = el('span','elapsed'); time.dataset.elapsed = job.createdAt; status.append(time); } output.append(status);
@@ -271,17 +288,20 @@ function renderStage() {
     outputs(job).forEach((asset,index) => {
       const item = el('div',`result-option${index === state.outputIndex ? ' selected' : ''}`);
       const picture = button('',()=>preview(asset),'result-image'); picture.setAttribute('aria-label',`放大查看方案${index + 1}`); picture.append(imageElement(asset,job.prompt));
+      const pictureFrame = el('div', 'result-picture');
+      pictureFrame.style.maxWidth = `${Math.min(outputs(job).length > 1 ? 400 : 640, asset.width / asset.height * (outputs(job).length > 1 ? 290 : 640))}px`;
+      const editImage = button('编辑', () => { void openResultEditor(job, index); }, 'result-edit-button');
+      editImage.setAttribute('aria-label', `编辑方案${index + 1}`); editImage.disabled = busy() || !!job.deletedAt;
+      pictureFrame.append(picture, editImage);
       const tools = el('div','result-tools'); tools.append(el('span','result-meta',`${outputs(job).length > 1 ? `方案 ${index + 1} · ` : ''}${asset.width} × ${asset.height} · ${asset.format.toUpperCase()}`),downloadLink(asset));
-      const use = button(index === state.outputIndex ? '✓ 当前编辑方案' : '使用这个方案',()=>{baseOn(job,index); renderStage(); $('#prompt').focus();}); use.disabled = busy() || !!job.deletedAt;
-      item.append(picture,tools,use); grid.append(item);
+      item.append(pictureFrame,tools);
+      if (outputs(job).length > 1) { const use = button(index === state.outputIndex ? '✓ 当前编辑方案' : '使用这个方案',()=>{void openResultEditor(job,index);}); use.disabled = busy() || !!job.deletedAt; item.append(use); }
+      grid.append(item);
     }); output.append(grid);
     if (job.warning) output.append(el('p','job-warning',job.warning));
     if (job.error) output.append(el('p','job-warning',job.error));
     const actions = el('div','result-action-row');
-    const edit = button('继续修改',()=>{baseOn(job,state.outputIndex); $('#prompt').focus();}); edit.disabled = busy() || !!job.deletedAt;
-    const mask = button('局部重绘',()=>{baseOn(job,state.outputIndex); void editor.open(state.references[0].asset,'inpaint');}); mask.disabled = busy() || !!job.deletedAt;
-    const expand = button('扩图',()=>{baseOn(job,state.outputIndex); void editor.open(state.references[0].asset,'outpaint');}); expand.disabled = busy() || !!job.deletedAt;
-    actions.append(edit,mask,expand,button('对比版本',()=>openCompare(job,state.outputIndex)),button('管理作品',()=>openManage(job))); output.append(actions);
+    actions.append(button('对比版本',()=>openCompare(job,state.outputIndex)),button('管理作品',()=>openManage(job))); output.append(actions);
     const versions = renderVersions(job); if (versions) output.append(versions);
   } else if (job.status === 'failed' || job.status === 'cancelled') {
     const notice = el('div',`job-notice ${job.status}`); notice.append(el('p','',job.error || '已停止本地等待。上游可能仍会完成生成并计费。'),button('恢复这次创作的输入 →',()=>{selectJob(job); $('#prompt').value = job.prompt; $('#prompt').focus(); updateControls();},'text-button')); output.append(notice);
@@ -289,11 +309,36 @@ function renderStage() {
   if (job.refinedPrompt && !active(job)) output.append(promptDetails(job)); conversation.append(output); stage.append(conversation); updateElapsed();
 }
 function updateElapsed() { document.querySelectorAll('[data-elapsed]').forEach(node=>{const seconds=Math.max(0,Math.floor((Date.now()-new Date(node.dataset.elapsed))/1000));node.textContent=seconds<60?`${seconds} 秒`:`${Math.floor(seconds/60)} 分 ${seconds%60} 秒`;}); }
+function commentMessage(references = []) {
+  return references.flatMap((ref, index) => ref.comments?.length ? [`图像 ${index + 1}：\n${ref.comments.map((comment, i) => `${i + 1}. (x: ${Number((comment.x * 100).toFixed(1))}%, y: ${Number((comment.y * 100).toFixed(1))}%) ${comment.text}`).join('\n')}`] : []).join('\n\n');
+}
+function resizeComposer() {
+  if ($('#composer-area').hidden) return;
+  const composer = $('#composer'), prompt = $('#prompt');
+  // Measure the compact row first so wrapping never oscillates between layouts.
+  composer.classList.remove('expanded'); prompt.style.height = '28px';
+  composer.classList.toggle('expanded', !$('#reference-list').hidden || prompt.scrollHeight > 28);
+  prompt.style.height = 'auto';
+  prompt.style.height = `${Math.max(28, Math.min(prompt.scrollHeight, 168, innerHeight * .22))}px`;
+}
+function toggleSettings(open = $('#generation-settings').hidden) {
+  $('#generation-settings').hidden = !open;
+  $('#settings-button').setAttribute('aria-expanded', String(open));
+  if (open) $('#size').focus();
+  resizeComposer();
+}
 function updateControls() {
-  const running=state.jobs.some(active), disabled=busy()||!state.config?.ready||!$('#prompt').value.trim();
-  $('#generate').disabled=disabled; $('#refine').disabled=disabled; $('#generate').hidden=running; $('#stop').hidden=!running; $('#stop').disabled=false;
-  $('#upload-reference').disabled=busy()||state.references.length>=16; $('#inpaint').disabled=$('#outpaint').disabled=busy()||!state.references.length;
-  for(const id of ['size','quality','count','action','format','background','compression','optimize','use-vision']) $(`#${id}`).disabled=busy();
+  const pending = state.advancedOpen || referenceEditor?.hasPendingChanges();
+  const running=state.jobs.some(active), disabled=busy()||pending||(!$('#prompt').value.trim()&&!state.references.some(ref=>ref.comments?.length));
+  $('#generate').disabled=disabled||!state.config?.ready; $('#refine').disabled=disabled||!state.config?.promptReady; $('#generate').hidden=running; $('#stop').hidden=!running; $('#stop').disabled=false;
+  $('#upload-reference').disabled=busy()||state.advancedOpen||state.references.length>=16;
+  $('#reference-list').setAttribute('aria-busy',String(state.uploading));
+  $('#composer-status').textContent=state.uploading?'正在添加参考图片…':state.config?`${state.config.channelName} · ${state.config.imageModel}`:'正在读取配置…';
+  document.querySelectorAll('.reference-remove').forEach(control=>{control.disabled=busy();});
+  for(const id of ['size','quality','count','format','background','compression','optimize','use-vision']) $(`#${id}`).disabled=busy();
+  if (state.config && !state.config.promptReady) { $('#optimize').checked=false; $('#optimize').disabled=true; $('#use-vision').disabled=true; }
+  referenceEditor?.setBusy(busy());
+  resizeComposer();
 }
 function render() {
   renderHistory(); renderStage(); renderReferences(); updateControls();
@@ -301,56 +346,127 @@ function render() {
   $('#stage').setAttribute('aria-labelledby',`${state.view}-nav`);
 }
 function submission(job) {
-  if(job) return { ...Object.fromEntries(['size','quality','count','format','compression','background','optimize','useVision','action'].map(key=>[key,job[key]])),references:(job.references||[]).map(({assetId,role,note})=>({assetId,role,note})),parent:job.parent,edit:draftEdit(job) };
-  return { ...settings(),references:state.references.map(({assetId,role,note})=>({assetId,role,note})),parent:state.parent,edit:state.edit };
+  if(job) return { ...Object.fromEntries(['size','quality','count','format','compression','background','optimize','useVision','action'].map(key=>[key,job[key]])),references:(job.references||[]).map(({assetId,role,note,comments})=>({assetId,role,note,comments})),parent:job.parent,edit:draftEdit(job) };
+  return { ...settings(),references:state.references.map(({assetId,role,note,comments})=>({assetId,role,note,comments})),parent:state.parent,edit:state.edit };
+}
+async function startCreation(input) {
+  if (input.mode === 'refine' && !state.config?.promptReady) throw new Error('提示词优化不可用，请检查 Codex 配置。');
+  if (state.config && !state.config.promptReady) input = { ...input, optimize: false };
+  const job = await post('/api/jobs', input);
+  if (state.editingResult) referenceEditor.dismiss();
+  state.selected = job.id; state.outputIndex = 0; state.view = 'studio';
+  if (input.mode === 'generate') { state.references = []; state.parent = null; clearEdit(); toggleSettings(false); }
+  $('#prompt').value = ''; updateJob(job); render(); watch(job); $('#stage').scrollTop = 0;
+  return job;
 }
 async function submit(mode='generate',prompt=$('#prompt').value.trim(),refinedPrompt='',snapshot=null) {
-  if(busy()) return;
+  if(busy() || state.advancedOpen || referenceEditor?.hasPendingChanges()) return;
   const input=submission(snapshot);
   if(input.action!=='none'&&!input.references.length){toast('请先上传或选择要编辑的图片');return;}
   state.sending=true; updateControls();
-  try { const job=await post('/api/jobs',{...input,prompt,refinedPrompt,mode});state.selected=job.id;state.outputIndex=0;state.view='studio';updateJob(job);render();watch(job);$('#prompt').value='';$('#stage').scrollTop=0; }
+  try { return await startCreation({...input,prompt,refinedPrompt,mode}); }
   catch(error){toast(error.message);} finally{state.sending=false;renderReferences();updateControls();}
 }
 async function refreshConfig() {
   try {
-    state.config=await api('/api/config');const config=state.config;
-    $('#connection-label').textContent=config.ready?'已读取 Codex 配置':'配置需要检查';$('#connection').classList.toggle('not-ready',!config.ready);$('#config-warning').hidden=config.ready;$('#config-warning').textContent=config.error||'';
-    $('#config-details').replaceChildren();
-    for(const [label,value] of [['提示词模型',config.model],['生图模型',config.imageModel],['服务提供方',config.provider],['API 地址',config.baseUrl],['凭据来源',config.credentialSource],['Profile',config.profile||'默认']]) $('#config-details').append(el('dt','',label),el('dd','',value||'—'));
-    updateControls();
+    await configPanel.refresh();
   }catch(error){$('#connection-label').textContent='服务未连接';toast(error.message);}
 }
-function newImage(){closeHistory();state.selected=null;state.outputIndex=0;state.view='studio';state.references=[];state.parent=null;clearEdit();$('#prompt').value='';$('#action').value='none';render();$('#prompt').focus();}
-const editor=createEditor({imageSource,upload,notify:toast,onApply:edit=>{state.edit=edit;renderReferences();if(!$('#prompt').value.trim())$('#prompt').value=edit.type==='outpaint'?'自然补全画布的透明区域，与原图场景、光线和透视保持一致。':'';$('#prompt').focus();updateControls();}});
+function newImage(){if(!closeResultEditor())return;closeHistory();state.selected=null;state.outputIndex=0;state.view='studio';state.references=[];state.parent=null;clearEdit();$('#prompt').value='';toggleSettings(false);render();$('#prompt').focus();}
+const editor=createEditor({imageSource,upload,notify:toast,onApply:edit=>{
+  state.edit=edit;renderReferences();if(!$('#prompt').value.trim())$('#prompt').value=edit.type==='outpaint'?'自然补全画布的透明区域，与原图场景、光线和透视保持一致。':'';
+  queueMicrotask(()=>{if(matchMedia('(max-width:680px)').matches)referenceEditor.close();$('#prompt').focus();updateControls();});
+},onClose:()=>{state.advancedOpen=false;referenceEditor?.finishAdvanced();updateControls();}});
+async function transformReference(ref, { prompt, action = 'none', edit = null, signal }) {
+  if (busy()) throw new Error('请等待当前操作结束。');
+  signal.throwIfAborted(); state.sending = true; updateControls();
+  let job;
+  const cancel = () => { if (job) void post(`/api/jobs/${job.id}/cancel`, {}).catch(() => {}); };
+  signal.addEventListener('abort', cancel, { once: true });
+  try {
+    job = await post('/api/jobs', { prompt, action, edit, references: [{ assetId: ref.assetId, role: 'base' }], optimize: false, count: 1, format: 'png', quality: $('#quality').value, background: action === 'remove-background' ? 'transparent' : 'auto' });
+    updateJob(job); if (signal.aborted) cancel();
+    while (active(job)) {
+      await new Promise(resolve => setTimeout(resolve, 700));
+      job = await api(`/api/jobs/${job.id}`); updateJob(job);
+    }
+    signal.throwIfAborted();
+    if (job.status !== 'completed' || !job.outputs?.length) throw new Error(job.error || '图片处理已取消。');
+    if (job.warning) toast(job.warning);
+    return job.outputs[0];
+  } catch (error) {
+    if (job && active(job)) watch(job);
+    throw error;
+  } finally { signal.removeEventListener('abort', cancel); state.sending = false; updateControls(); }
+}
+referenceEditor = createReferenceEditor({
+  imageSource, upload, downloadLink, notify: toast, transform: transformReference,
+  onStateChange: updateControls,
+  onClose() { editor.close(); state.editingResult = null; state.advancedOpen = false; renderReferences(); updateControls(); },
+  onAdvanced(ref, type, container) {
+    if (busy() || !state.references.includes(ref)) { referenceEditor.finishAdvanced(); return; }
+    state.advancedOpen = true; updateControls(); void editor.open(ref.asset, type, { container });
+  },
+  async onGenerate(ref, { prompt, action }) {
+    if (busy()) throw new Error('请等待当前操作结束。');
+    if (!state.config?.ready) throw new Error('请先检查模型连接配置。');
+    if (!state.references.includes(ref)) throw new Error('附件已移除，请重新添加图片。');
+    state.sending = true; updateControls();
+    try {
+      return await startCreation({
+        mode: 'generate', prompt, action,
+        references: [{ assetId: ref.assetId, role: 'general' }],
+        parent: state.parent?.assetId === ref.assetId ? state.parent : null,
+        optimize: false, size: 'auto', quality: $('#quality').value, count: 1,
+        format: 'png', background: 'transparent',
+      });
+    } finally { state.sending = false; renderReferences(); updateControls(); }
+  },
+  onComments(ref, comments) {
+    if (!state.references.includes(ref) || busy()) throw new Error('当前图片不可修改，请重新打开附件。');
+    const length = state.references.reduce((total, item) => total + (item === ref ? comments : item.comments || []).reduce((n, comment) => n + comment.text.length, 0), 0);
+    if (length > 8000) throw new Error('图片评论总计不得超过 8000 字。');
+    ref.comments = comments.map(comment => ({ ...comment })); renderReferences(); updateControls();
+  },
+  onReplace(ref, asset, comments) {
+    if (!state.references.includes(ref)) throw new Error('附件已移除，请重新添加图片。');
+    if (state.parent?.assetId === ref.assetId) state.parent = null;
+    if (state.edit?.sourceId === ref.assetId) clearEdit();
+    ref.assetId = asset.id; ref.asset = asset; ref.role = 'general'; ref.note = '';
+    if (comments) ref.comments = comments;
+    renderReferences(); updateControls();
+  },
+  onSend() { if (!state.config?.ready) { toast('请先检查模型连接配置。'); return; } void submit(); },
+});
 $('#new-image').onclick=newImage;
-$('#studio-nav').onclick=()=>{closeHistory();state.view='studio';render();};$('#gallery-nav').onclick=()=>{closeHistory();state.view='gallery';render();};
+$('#studio-nav').onclick=()=>{closeHistory();state.view='studio';render();};$('#gallery-nav').onclick=()=>{if(!closeResultEditor())return;closeHistory();state.view='gallery';render();};
 $('.view-tabs').onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const view=event.key==='Home'?'studio':event.key==='End'?'gallery':state.view==='studio'?'gallery':'studio';$(`#${view}-nav`).click();$(`#${view}-nav`).focus();};
 $('#history-popover').addEventListener('beforetoggle',event=>{$('#history-button').setAttribute('aria-expanded',String(event.newState==='open'));if(event.newState==='open')positionHistory();});
 $('#history-popover').addEventListener('toggle',event=>{if(event.newState==='open'){positionHistory();($('#history .selected')||$('#history button'))?.focus({preventScroll:true});}});
-window.addEventListener('resize',()=>{if($('#history-popover').matches(':popover-open'))positionHistory();});
+window.addEventListener('resize',()=>{if($('#history-popover').matches(':popover-open'))positionHistory();resizeComposer();});
 $('#return-codex').hidden=!embed||!!mcp;$('#return-codex').onclick=()=>{if(embed&&!mcp&&window.parent!==window)window.parent.postMessage({type:'codex-imageboard-close'},'*');};
 $('#composer').onsubmit=event=>{event.preventDefault();if(!$('#generate').disabled)void submit();};$('#refine').onclick=()=>submit('refine');
+// MCP frames can disallow native form submission; use the same explicit action as Enter.
+$('#generate').onclick=event=>{event.preventDefault();if(!$('#generate').disabled)void submit();};
 $('#prompt').oninput=updateControls;$('#prompt').onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!$('#generate').disabled)void submit();}};
 $('#stop').onclick=async()=>{const job=state.jobs.find(active);if(!job)return;$('#stop').disabled=true;try{await post(`/api/jobs/${job.id}/cancel`,{});}catch(error){toast(error.message);$('#stop').disabled=false;}};
 $('#upload-reference').onclick=()=>$('#reference-input').click();$('#reference-input').onchange=event=>{const files=[...event.target.files];event.target.value='';void uploadFiles(files);};
-$('#inpaint').onclick=()=>editor.open(state.references[0].asset,'inpaint');$('#outpaint').onclick=()=>editor.open(state.references[0].asset,'outpaint');
-$('#settings-button').onclick=()=>{const open=$('#generation-settings').hidden;$('#generation-settings').hidden=!open;$('#settings-button').setAttribute('aria-expanded',String(open));};
+$('#settings-button').onclick=()=>toggleSettings();
+$('#composer').addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#generation-settings').hidden){event.preventDefault();toggleSettings(false);$('#settings-button').focus();}});
 for(const id of ['format','background','compression'])$(`#${id}`).oninput=syncOutputOptions;
-$('#action').onchange=()=>{syncOutputOptions();const hints={style:'把参考图转换成水彩插画风格，保留主体和构图。',recolor:'把参考图中主体的颜色改为蓝色，其他部分保持不变。',text:'将图片中的文字替换为「在这里输入文案」，保留其他排版。',translate:'将图片中的文字翻译成中文，保留原来的排版。',sketch:'将这张草图转为真实感摄影，保持布局、比例和透视。','remove-background':'移除图片背景，保留主体和自然边缘，输出透明背景。','replace-background':'将背景替换为简洁的浅灰色摄影棚，保持主体不变。'};if(!$('#prompt').value.trim()&&hints[$('#action').value])$('#prompt').value=hints[$('#action').value];updateControls();};
-$('#connection').onclick=()=>{closeHistory();$('#config-dialog').showModal();};$('#close-config').onclick=()=>$('#config-dialog').close();$('#refresh-config').onclick=async()=>{await refreshConfig();toast('已重新读取配置');};
+$('#connection').onclick=()=>{closeHistory();void configPanel.open();};
 $('#close-preview').onclick=()=>$('#preview-dialog').close();$('#close-compare').onclick=()=>$('#compare-dialog').close();$('#compare-slider').oninput=event=>$('.compare-canvas').style.setProperty('--split',`${event.target.value}%`);
 $('#close-manage').onclick=()=>$('#manage-dialog').close();
 $('#manage-form').onsubmit=async event=>{event.preventDefault();const job=state.jobs.find(j=>j.id===state.managing);if(!job)return;try{await manageJob(job,{title:$('#work-title').value,tags:$('#work-tags').value.split(/[,，]/).map(x=>x.trim()).filter(Boolean),favorite:$('#work-favorite').checked});$('#manage-dialog').close();toast('作品信息已保存');}catch(error){toast(error.message);}};
 $('#trash-work').onclick=async()=>{const job=state.jobs.find(j=>j.id===state.managing);if(!job)return;try{const deleted=!job.deletedAt;await manageJob(job,{deleted});$('#manage-dialog').close();if(deleted&&state.selected===job.id)newImage();toast(deleted?'已移入回收站，可在「我的作品」恢复':'作品已恢复');}catch(error){toast(error.message);}};
 for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}});
-document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'&&!document.querySelector('dialog[open]')){event.preventDefault();newImage();}});
-document.addEventListener('paste',event=>{if(document.querySelector('dialog[open]'))return;const files=[...event.clipboardData?.items||[]].filter(item=>item.kind==='file').map(item=>item.getAsFile()).filter(Boolean);if(files.length){event.preventDefault();void uploadFiles(files);}});
+document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'&&!document.querySelector('dialog:modal')){event.preventDefault();newImage();}});
+document.addEventListener('paste',event=>{if(document.querySelector('dialog:modal'))return;const files=[...event.clipboardData?.items||[]].filter(item=>item.kind==='file').map(item=>item.getAsFile()).filter(Boolean);if(files.length){event.preventDefault();void uploadFiles(files);}});
 let dragDepth=0;
-document.addEventListener('dragenter',event=>{if(event.dataTransfer?.types.includes('Files')&&!document.querySelector('dialog[open]')){event.preventDefault();dragDepth++;$('#drop-overlay').hidden=false;}});
+document.addEventListener('dragenter',event=>{if(event.dataTransfer?.types.includes('Files')&&!document.querySelector('dialog:modal')){event.preventDefault();dragDepth++;$('#drop-overlay').hidden=false;}});
 document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault();});
 document.addEventListener('dragleave',()=>{dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)$('#drop-overlay').hidden=true;});
-document.addEventListener('drop',event=>{dragDepth=0;$('#drop-overlay').hidden=true;if(event.dataTransfer?.files.length){event.preventDefault();if(!document.querySelector('dialog[open]'))void uploadFiles(event.dataTransfer.files);}});
+document.addEventListener('drop',event=>{dragDepth=0;$('#drop-overlay').hidden=true;if(event.dataTransfer?.files.length){event.preventDefault();if(!document.querySelector('dialog:modal'))void uploadFiles(event.dataTransfer.files);}});
 window.addEventListener('beforeunload',()=>{state.source?.close();for(const cached of imageCache.values())void cached.then(image=>URL.revokeObjectURL(image.url)).catch(()=>{});});
 setInterval(updateElapsed,1000);render();await refreshConfig();
 try{state.jobs=await api('/api/jobs');const running=state.jobs.find(active);if(running){state.selected=running.id;restoreSettings(running);state.references=(running.references||[]).map(ref=>({...ref}));state.parent=running.parent;state.edit=draftEdit(running);watch(running);}render();}catch(error){toast(error.message);}

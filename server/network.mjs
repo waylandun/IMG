@@ -22,7 +22,7 @@ export function connectionErrorMessage(error) {
   if (codes.has('ENOTFOUND') || codes.has('EAI_AGAIN')) return '无法解析网关域名，请检查网络和 base_url。';
   if (codes.has('ECONNREFUSED')) return '网关拒绝连接，请检查服务是否运行，以及 base_url 的端口。';
   if (error?.name === 'TimeoutError' || codes.has('ETIMEDOUT') || codes.has('UND_ERR_CONNECT_TIMEOUT')) return '连接网关超时，请检查网络或代理设置。';
-  return '无法连接当前 Codex 网关，请检查网络、代理和 base_url。';
+  return '无法连接当前网关，请检查网络、代理和 base_url。';
 }
 
 configureCertificateTrust();

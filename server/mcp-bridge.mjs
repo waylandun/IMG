@@ -7,8 +7,9 @@ const UUID = '[a-f0-9-]{36}';
 export function allowedRequest(method, route) {
   if (typeof route !== 'string') return false;
   if (method === 'GET') return new RegExp(`^/api/(config|jobs(?:/${UUID})?|assets/${UUID}(?:\\?(?:meta|download)=1)?|images/${UUID}\\.png(?:\\?download=1)?)$`).test(route);
-  if (method === 'POST') return new RegExp(`^/api/jobs(?:/${UUID}/cancel)?$`).test(route);
-  return method === 'PATCH' && new RegExp(`^/api/jobs/${UUID}$`).test(route);
+  if (method === 'POST') return new RegExp(`^/api/(jobs(?:/${UUID}/cancel)?|channels(?:/models)?)$`).test(route);
+  if (method === 'PATCH') return new RegExp(`^/api/(jobs/${UUID}|channels/(?:codex|${UUID})|config/default-channel)$`).test(route);
+  return method === 'DELETE' && new RegExp(`^/api/channels/(?:codex|${UUID})$`).test(route);
 }
 export function createBridge({ directory = dataDirectory(), runtimeLoader = () => ensureRuntime(directory) } = {}) {
   const uploads = new Map(), downloads = new Map();

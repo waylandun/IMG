@@ -24,28 +24,126 @@
     <div id="config-warning" class="config-warning" hidden></div>
     <section id="stage" class="stage" role="tabpanel" aria-labelledby="studio-nav" tabindex="0"></section>
     <footer class="composer-area" id="composer-area">
+      <div id="edit-context" class="edit-context" hidden></div>
       <form id="composer" class="composer">
-        <div class="reference-toolbar"><button type="button" id="upload-reference" class="tool-button">＋ 参考图</button><input id="reference-input" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden><span id="reference-hint">支持拖入或粘贴图片</span><button type="button" id="inpaint" class="tool-button" disabled>◩ 局部重绘</button><button type="button" id="outpaint" class="tool-button" disabled>↗ 扩图</button></div>
         <div id="reference-list" class="reference-list" aria-label="参考图列表" hidden></div>
-        <div id="edit-context" class="edit-context" hidden></div>
-        <label class="sr-only" for="prompt">描述你想创作的画面</label>
-        <textarea id="prompt" maxlength="8000" rows="2" placeholder="描述你脑海中的画面，剩下的交给想象力…"></textarea>
-        <div class="composer-toolbar"><div class="options"><label class="option"><span>▱</span><select id="size" aria-label="图片比例"><option value="auto">自动比例</option><option value="1024x1024">1:1 方形</option><option value="1536x1024">3:2 横向</option><option value="1024x1536">2:3 竖向</option><option value="1536x864">16:9 宽屏</option><option value="864x1536">9:16 海报</option></select></label><label class="option"><span>✧</span><select id="quality" aria-label="图片画质"><option value="auto">自动画质</option><option value="low">草图 · Low</option><option value="medium">标准 · Medium</option><option value="high">精细 · High</option><option value="xhigh">超精细 · Xhigh</option><option value="max">最高 · Max</option></select></label><label class="option"><select id="count" aria-label="生成张数"><option value="1">1 张</option><option value="2">2 个方案</option><option value="4">4 个方案</option></select></label></div><div class="composer-actions"><button type="button" id="settings-button" class="refine-button" aria-expanded="false" aria-controls="generation-settings">参数</button><button type="button" id="refine" class="refine-button">✧ 优化提示词</button><button type="submit" id="generate" class="generate-button" aria-label="生成图片"><span>生成</span><span>↑</span></button><button type="button" id="stop" class="stop-button" hidden>■ 停止</button></div></div>
-        <div id="generation-settings" class="generation-settings" hidden>
-          <label>快捷编辑<select id="action"><option value="none">自由创作 / 修改</option><option value="style">风格转换</option><option value="recolor">修改颜色</option><option value="text">修改图片文字</option><option value="translate">翻译图片文字</option><option value="sketch">草图转实景</option><option value="remove-background">去除背景</option><option value="replace-background">替换背景</option></select></label>
+        <input id="reference-input" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+        <span id="reference-hint" class="sr-only">添加参考图片，也支持拖入或粘贴。最多 16 张，每张不超过 20 MB。</span>
+        <div class="composer-row">
+          <!-- Feather Icons 4.29.2 (MIT); license: web/feather-icons-LICENSE.txt -->
+          <button type="button" id="upload-reference" class="composer-icon upload-button" aria-label="添加参考图片" aria-describedby="reference-hint" title="添加图片（支持拖入或粘贴）"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+          <label class="sr-only" for="prompt">描述新图像</label>
+          <textarea id="prompt" maxlength="8000" rows="1" placeholder="描述新图像" aria-describedby="reference-hint"></textarea>
+          <div class="composer-actions">
+            <select id="quality" class="quality-select" aria-label="图片画质" title="图片画质"><option value="auto">自动</option><option value="low">低</option><option value="medium">标准</option><option value="high">高</option><option value="xhigh">超高</option><option value="max">最高</option></select>
+            <button type="button" id="settings-button" class="composer-icon settings-button" aria-label="生成设置" title="生成设置" aria-expanded="false" aria-controls="generation-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></button>
+            <button type="submit" id="generate" class="generate-button" aria-label="生成图片" title="生成图片"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+            <button type="button" id="stop" class="stop-button" aria-label="停止生成" title="停止生成" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></button>
+          </div>
+        </div>
+        <div id="generation-settings" class="generation-settings" role="group" aria-label="生成设置" hidden>
+          <label>图片比例<select id="size"><option value="auto">自动比例</option><option value="1024x1024">1:1 方形</option><option value="1536x1024">3:2 横向</option><option value="1024x1536">2:3 竖向</option><option value="1536x864">16:9 宽屏</option><option value="864x1536">9:16 海报</option></select></label>
+          <label>生成张数<select id="count"><option value="1">1 张</option><option value="2">2 个方案</option><option value="4">4 个方案</option></select></label>
           <label>输出格式<select id="format"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option></select></label>
           <label>图片背景<select id="background"><option value="auto">自动</option><option value="opaque">不透明</option><option value="transparent">透明背景</option></select></label>
           <label id="compression-control" hidden>压缩质量 <output id="compression-value">90</output><input id="compression" type="range" min="0" max="100" value="90" aria-label="压缩质量"></label>
           <label class="check-option"><input id="optimize" type="checkbox" checked>生成前优化提示词</label><label class="check-option"><input id="use-vision" type="checkbox" checked>结合参考图理解需求</label>
+          <button type="button" id="refine" class="refine-button">优化提示词</button>
         </div>
       </form>
-      <div class="composer-caption"><span>✦ <span id="model-label">gpt-image-2.5-flare</span></span><span>Enter 生成 · Shift + Enter 换行</span></div>
+      <div class="composer-caption"><span id="composer-status" role="status">gpt-image-2.5-flare</span><span>Enter 生成 · Shift + Enter 换行</span></div>
     </footer>
   </main>
+  <template id="reference-remove-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></template>
+  <template id="reference-icon-edit-3"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-3"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></template>
+  <template id="reference-icon-message-square"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-message-square"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></template>
+  <template id="reference-icon-scissors"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-scissors"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg></template>
+  <template id="reference-icon-delete"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-delete"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="18" y1="9" x2="12" y2="15"></line><line x1="12" y1="9" x2="18" y2="15"></line></svg></template>
+  <template id="reference-icon-maximize-2"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-maximize-2"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg></template>
+  <template id="reference-icon-download"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></template>
+  <template id="reference-icon-x"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></template>
+  <template id="reference-icon-arrow-up"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-arrow-up"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg></template>
+  <template id="reference-icon-square"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-square"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg></template>
   <section id="history-popover" class="history-popover" popover aria-labelledby="history-title"><div class="history-heading"><strong id="history-title">最近创作</strong><span>仅保存在本机</span></div><div id="history" class="history-list"></div></section>
-  <dialog id="config-dialog"><div class="dialog-top"><div><span class="eyebrow">CODEX CONFIGURATION</span><h2>模型与连接配置</h2></div><button class="icon-button" id="close-config" aria-label="关闭配置">×</button></div><p class="dialog-intro">沿用 Codex 的模型与服务配置，每次创作时重新读取。</p><dl id="config-details"></dl><p class="privacy-note">API 凭据仅在本地后端使用，不会传递到面板页面。</p><button id="refresh-config" class="primary-button">重新读取配置</button></dialog>
+  <dialog id="config-dialog" aria-labelledby="config-title">
+    <div class="dialog-top"><div><span class="eyebrow">IMAGEBOARD CONFIGURATION</span><h2 id="config-title">模型与连接配置</h2></div><button class="icon-button" id="close-config" aria-label="关闭配置">×</button></div>
+    <div id="channel-overview">
+      <p class="dialog-intro">默认渠道用于生图，提示词优化沿用 Codex 配置。切换渠道从下次创作生效。</p>
+      <div id="channel-list" class="channel-list"></div>
+      <section id="channel-delete-confirm" class="channel-confirm" aria-label="确认删除渠道" hidden><p id="channel-delete-message"></p><div class="channel-actions"><button type="button" id="channel-delete-cancel" class="tool-button">取消</button><button type="button" id="channel-delete-submit" class="primary-button">确认删除</button></div></section>
+      <div class="channel-actions channel-toolbar"><button id="add-channel" class="primary-button">新增渠道</button><button id="refresh-config" class="tool-button">重新读取 Codex 配置</button></div>
+    </div>
+    <form id="channel-form" hidden autocomplete="off">
+      <p id="channel-form-title" class="channel-form-title">新增生图渠道</p>
+      <fieldset id="channel-fields">
+        <label class="channel-field">渠道名称<input id="channel-name" required maxlength="80" placeholder="例如：我的生图服务"></label>
+        <label class="channel-field">Base URL<input id="channel-base-url" type="url" required maxlength="2048" placeholder="https://api.example.com/v1" spellcheck="false"></label>
+        <label class="channel-field">API Key<input id="channel-api-key" type="password" maxlength="8192" autocomplete="new-password" spellcheck="false" placeholder="输入 API Key"><small id="channel-key-help">密钥仅保存在本机，保存后不回显。</small></label>
+        <div class="channel-field"><span>生图模型</span><div class="channel-model-row"><input id="channel-model" aria-label="生图模型 ID" required maxlength="200" placeholder="选择或手动填写模型 ID" spellcheck="false"><button type="button" id="fetch-channel-models" class="tool-button">拉取模型</button></div></div>
+        <div id="channel-model-picker" class="channel-model-picker" hidden><input id="channel-model-search" aria-label="搜索模型" type="search" placeholder="搜索模型 ID"><select id="channel-model-list" aria-label="选择生图模型" size="5"></select></div>
+        <p id="channel-model-status" class="channel-help" role="status">支持 OpenAI 兼容 Images API；拉取列表后请选择生图模型，也可直接填写模型 ID。</p>
+      </fieldset>
+      <div class="channel-actions"><button type="button" id="cancel-channel" class="tool-button">返回</button><button type="button" id="save-channel" class="primary-button">保存渠道</button></div>
+    </form>
+    <p id="channel-error" class="channel-error" role="alert" hidden></p>
+    <p class="privacy-note">扫描配置只读。自定义密钥保存在本机配置文件中，不会在页面中回显。模型列表可用不代表已验证生图权限。</p>
+  </dialog>
   <dialog id="preview-dialog" class="preview-dialog"><button id="close-preview" class="preview-close" aria-label="关闭图片预览">×</button><img id="preview-image" alt="生成图片的完整预览"></dialog>
-  <dialog id="editor-dialog" class="editor-dialog"><div class="dialog-top"><div><span class="eyebrow">IMAGE EDITOR</span><h2 id="editor-title">局部重绘</h2></div><button id="close-editor" class="icon-button" aria-label="关闭图片编辑器">×</button></div><p id="editor-description" class="dialog-intro"></p><div id="mask-tools" class="editor-tools"><button type="button" data-tool="brush" class="tool-button selected">画笔</button><button type="button" data-tool="rect" class="tool-button">框选</button><button type="button" data-tool="erase" class="tool-button">擦除选区</button><label>笔刷 <input id="brush-size" type="range" min="8" max="160" value="45" aria-label="笔刷大小"></label><button type="button" id="mask-undo" class="tool-button">撤销</button><button type="button" id="mask-clear" class="tool-button">清空</button></div><div id="outpaint-tools" class="outpaint-tools" hidden><div class="editor-tools"><button type="button" data-expand="horizontal" class="tool-button">横向扩展</button><button type="button" data-expand="vertical" class="tool-button">纵向扩展</button><button type="button" data-expand="all" class="tool-button">四周扩展</button></div><div class="edge-controls"><label>左侧 %<input data-edge="left" type="number" min="0" max="100" step="5" value="25"></label><label>右侧 %<input data-edge="right" type="number" min="0" max="100" step="5" value="25"></label><label>上方 %<input data-edge="top" type="number" min="0" max="100" step="5" value="0"></label><label>下方 %<input data-edge="bottom" type="number" min="0" max="100" step="5" value="0"></label></div></div><div class="editor-canvas-wrap"><canvas id="edit-canvas" aria-label="图片编辑画布"></canvas></div><div class="editor-footer"><span id="editor-info"></span><button id="apply-edit" class="primary-button">应用选区</button></div></dialog>
+  <dialog id="reference-dialog" class="reference-dialog" aria-labelledby="reference-title">
+    <header class="reference-header">
+      <span id="reference-title">图片</span><span id="reference-name"></span>
+      <div class="reference-view-controls">
+        <select id="reference-zoom" aria-label="图片缩放"><option value="fit">适应</option><option value="0.5">50%</option><option value="1">100%</option><option value="1.5">150%</option><option value="2">200%</option></select>
+        <span id="reference-download"></span>
+        <button type="button" id="close-reference" class="composer-icon" aria-label="关闭附件编辑器" title="关闭" data-reference-icon="x"></button>
+      </div>
+    </header>
+    <div id="reference-viewport" class="reference-viewport">
+      <div id="reference-surface" class="reference-surface">
+        <img id="reference-image" alt="参考图片" draggable="false">
+        <canvas id="reference-drawing" aria-label="图片标注画布"></canvas>
+        <div id="reference-pins" class="reference-pins"></div>
+      </div>
+    </div>
+    <div id="reference-advanced-slot" class="reference-advanced-slot" hidden></div>
+    <form id="reference-comment-form" class="reference-comment-form" hidden>
+      <label class="sr-only" for="reference-comment-text">图片位置评论</label>
+      <textarea id="reference-comment-text" maxlength="300" rows="1" placeholder="描述这里的修改…"></textarea>
+      <div class="reference-comment-actions">
+        <button type="button" id="reference-comment-delete" class="text-button" hidden>删除评论</button>
+        <button type="button" id="reference-comment-cancel" class="text-button">取消</button>
+        <button type="submit" id="reference-comment-save" class="generate-button" aria-label="保存评论" title="保存评论（Enter）" data-reference-icon="arrow-up"></button>
+      </div>
+    </form>
+    <div class="reference-bottom">
+      <p id="reference-editor-status" class="reference-editor-status" role="status"></p>
+      <div id="reference-draw-options" class="reference-subtoolbar" hidden>
+        <label id="reference-color-control">颜色 <input id="reference-color" type="color" value="#ef4444" aria-label="标注颜色"></label>
+        <label>笔刷 <input id="reference-brush" type="range" min="2" max="60" value="8" aria-label="标注笔刷大小"></label>
+        <button type="button" id="reference-undo">撤销</button><button type="button" id="reference-clear">清空</button>
+        <button type="button" id="reference-apply-drawing" class="primary-button">保存标注</button>
+      </div>
+      <div id="reference-resize-menu" class="reference-resize-menu" role="menu" aria-label="调整图片比例" hidden>
+        <button type="button" role="menuitemradio" aria-checked="false" tabindex="-1" data-reference-ratio="1:1"><span class="ratio-icon" data-reference-icon="square"></span><span>正方形</span><span class="ratio-value">1:1</span></button>
+        <button type="button" role="menuitemradio" aria-checked="false" tabindex="-1" data-reference-ratio="3:4"><span class="ratio-icon" data-reference-icon="square"></span><span>竖向</span><span class="ratio-value">3:4</span></button>
+        <button type="button" role="menuitemradio" aria-checked="false" tabindex="-1" data-reference-ratio="9:16"><span class="ratio-icon" data-reference-icon="square"></span><span>故事版式</span><span class="ratio-value">9:16</span></button>
+        <button type="button" role="menuitemradio" aria-checked="false" tabindex="-1" data-reference-ratio="4:3"><span class="ratio-icon" data-reference-icon="square"></span><span>横向</span><span class="ratio-value">4:3</span></button>
+        <button type="button" role="menuitemradio" aria-checked="false" tabindex="-1" data-reference-ratio="16:9"><span class="ratio-icon" data-reference-icon="square"></span><span>宽屏</span><span class="ratio-value">16:9</span></button>
+      </div>
+      <div id="reference-comment-summary" class="reference-subtoolbar" hidden><span id="reference-comment-count">0 条评论</span><button type="button" id="reference-send-comments" class="primary-button">发送</button><button type="button" id="reference-exit-comments" class="composer-icon" aria-label="结束添加评论" data-reference-icon="x"></button></div>
+      <div id="reference-tools" class="reference-tools" role="toolbar" aria-label="附件图片工具">
+        <button type="button" data-reference-tool="annotate" aria-pressed="false"><span data-reference-icon="edit-3"></span>标注</button>
+        <button type="button" data-reference-tool="comment" aria-pressed="false"><span data-reference-icon="message-square"></span>添加评论</button>
+        <button type="button" data-reference-tool="remove-background" aria-pressed="false"><span data-reference-icon="scissors"></span>移除背景</button>
+        <button type="button" data-reference-tool="erase" aria-pressed="false"><span data-reference-icon="delete"></span>擦除</button>
+        <button type="button" data-reference-tool="resize" aria-pressed="false" aria-haspopup="menu" aria-expanded="false" aria-controls="reference-resize-menu"><span data-reference-icon="maximize-2"></span>调整大小</button>
+        <button type="button" data-reference-tool="inpaint" data-result-tool aria-pressed="false" hidden><span data-reference-icon="edit-3"></span>局部重绘</button>
+        <button type="button" data-reference-tool="outpaint" data-result-tool aria-pressed="false" hidden><span data-reference-icon="maximize-2"></span>扩图</button>
+      </div>
+      <button type="button" id="reference-cancel-operation" class="stop-button" aria-label="取消图片处理" hidden data-reference-icon="square"></button>
+    </div>
+  </dialog>
+  <dialog id="editor-dialog" class="editor-dialog" aria-labelledby="editor-title"><div class="dialog-top"><div><span class="eyebrow">IMAGE EDITOR</span><h2 id="editor-title">局部重绘</h2></div><button id="close-editor" class="icon-button" aria-label="关闭图片编辑器">×</button></div><p id="editor-description" class="dialog-intro"></p><div id="mask-tools" class="editor-tools"><button type="button" data-tool="brush" class="tool-button selected">画笔</button><button type="button" data-tool="rect" class="tool-button">框选</button><button type="button" data-tool="erase" class="tool-button">擦除选区</button><label>笔刷 <input id="brush-size" type="range" min="8" max="160" value="45" aria-label="笔刷大小"></label><button type="button" id="mask-undo" class="tool-button">撤销</button><button type="button" id="mask-clear" class="tool-button">清空</button></div><div id="outpaint-tools" class="outpaint-tools" hidden><div class="editor-tools"><button type="button" data-expand="horizontal" class="tool-button">横向扩展</button><button type="button" data-expand="vertical" class="tool-button">纵向扩展</button><button type="button" data-expand="all" class="tool-button">四周扩展</button></div><div class="edge-controls"><label>左侧 %<input data-edge="left" type="number" min="0" max="100" step="5" value="25"></label><label>右侧 %<input data-edge="right" type="number" min="0" max="100" step="5" value="25"></label><label>上方 %<input data-edge="top" type="number" min="0" max="100" step="5" value="0"></label><label>下方 %<input data-edge="bottom" type="number" min="0" max="100" step="5" value="0"></label></div></div><div class="editor-canvas-wrap"><canvas id="edit-canvas" aria-label="图片编辑画布"></canvas></div><div class="editor-footer"><span id="editor-info"></span><button id="apply-edit" class="primary-button">应用选区</button></div></dialog>
   <dialog id="manage-dialog"><div class="dialog-top"><h2>管理作品</h2><button id="close-manage" class="icon-button" aria-label="关闭作品管理">×</button></div><form id="manage-form"><label class="field-label">作品名称<input id="work-title" maxlength="100" required></label><label class="field-label">标签<input id="work-tags" placeholder="用逗号分隔，例如：海报，产品" maxlength="660"></label><label class="check-option"><input id="work-favorite" type="checkbox">收藏此作品</label><div class="manage-actions"><button id="trash-work" type="button" class="text-button">移入回收站</button><button class="primary-button" type="submit">保存</button></div></form></dialog>
   <dialog id="compare-dialog" class="compare-dialog"><div class="dialog-top"><h2>版本对比</h2><button id="close-compare" class="icon-button" aria-label="关闭版本对比">×</button></div><div class="compare-selects"><label>左侧版本<select id="compare-before"></select></label><label>右侧版本<select id="compare-after"></select></label></div><div class="compare-canvas"><img id="compare-before-image" alt="修改前"><div class="compare-overlay"><img id="compare-after-image" alt="修改后"></div><div class="compare-divider"></div><span class="compare-label before">修改前</span><span class="compare-label after">修改后</span></div><input id="compare-slider" type="range" min="0" max="100" value="50" aria-label="拖动比较两个版本"></dialog>
   <div id="drop-overlay" class="drop-overlay" hidden>松开以添加参考图</div>

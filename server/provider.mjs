@@ -13,7 +13,7 @@ export class ProviderError extends Error {
 function upstreamError(status) {
   const messages = {
     400: '网关拒绝了模型或生成参数，请确认网关支持指定模型和接口。',
-    401: '网关认证失败，请更新 Codex 的 API 凭据后重试。',
+    401: '网关认证失败，请检查所用渠道的 API 凭据。',
     403: '当前凭据没有访问该模型或接口的权限。',
     404: '当前网关没有提供该接口或模型。',
     429: '请求达到网关限额或余额不足，请稍后重试。',

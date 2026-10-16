@@ -94,3 +94,46 @@ test('cancellation after a saved variant stops further requests without losing i
  const job=await done(jobs,await jobs.create({prompt:'cancel variants',count:4,optimize:false}));
  assert.equal(calls,1);assert.equal(job.status,'cancelled');assert.equal(job.outputs.length,1);
 });
+
+test('position comments survive prompt preview, generation and disk persistence without a text prompt',async t=>{
+ let refinedInput,generatedInput;
+ const {jobs,directory}=await setup(t,{refine:async(_c,p)=>{refinedInput=p;return 'follow the image comments';},generate:async(_c,p)=>{generatedInput=p;return {image:png};}});
+ const asset=await jobs.assets.save(png);
+ const comments=[{x:.537,y:.32,text:'背景颜色换成粉色'},{x:.365,y:.593,text:'衣服颜色换成绿色'}];
+ const input={prompt:'',references:[{assetId:asset.id,role:'general',comments}]};
+ const preview=await done(jobs,await jobs.create({...input,mode:'refine'}));
+ assert.equal(preview.status,'prepared');assert.equal(generatedInput,undefined);
+ assert.match(refinedInput,/x: 53\.7%, y: 32%/);assert.match(refinedInput,/衣服颜色换成绿色/);
+ const generated=await done(jobs,await jobs.create({...input,refinedPrompt:preview.refinedPrompt}));
+ assert.equal(generated.status,'completed');assert.match(generatedInput,/x: 36\.5%, y: 59\.3%/);
+ assert.deepEqual(generated.references[0].comments,comments);assert.equal(generated.title,'背景颜色换成粉色');
+ const saved=JSON.parse(await readFile(path.join(directory,'jobs.json'),'utf8')).find(job=>job.id===generated.id);
+ assert.deepEqual(saved.references[0].comments,comments);
+ const restored=new Jobs({directory,configLoader:async()=>config});await restored.init();t.after(()=>restored.close());
+ assert.deepEqual(restored.get(generated.id).references[0].comments,comments);
+});
+
+test('comments remain attached to the right image when a continuation puts its original first',async t=>{
+ let generatedInput;
+ const {jobs}=await setup(t,{generate:async(_c,p)=>{generatedInput=p;return {image:png};}});
+ const original=await done(jobs,await jobs.create({prompt:'original',optimize:false}));
+ const extra=await jobs.assets.save(png);
+ const baseComments=[{x:0,y:1,text:'修改原图左下角'}],extraComments=[{x:1,y:0,text:'参考右上角颜色'}];
+ const next=await done(jobs,await jobs.create({prompt:'',optimize:false,parent:{jobId:original.id},references:[{assetId:extra.id,comments:extraComments},{assetId:original.outputs[0].id,comments:baseComments}]}));
+ assert.equal(next.status,'completed');assert.deepEqual(next.references[0].comments,baseComments);assert.deepEqual(next.references[1].comments,extraComments);
+ assert.match(generatedInput,/图像 1 的位置评论[^]*x: 0%, y: 100%[^]*修改原图左下角/);
+ assert.match(generatedInput,/图像 2 的位置评论[^]*x: 100%, y: 0%[^]*参考右上角颜色/);
+});
+
+test('rejects invalid or oversized position comments before invoking a model',async t=>{
+ let calls=0;
+ const {jobs}=await setup(t,{refine:async()=>{calls++;return 'unused';}});const asset=await jobs.assets.save(png);
+ const create=comments=>jobs.create({prompt:'edit',references:[{assetId:asset.id,comments}]});
+ for(const comment of [{x:-.1,y:.5,text:'x'},{x:.5,y:1.1,text:'x'},{x:NaN,y:0,text:'x'},{x:'0.5',y:.5,text:'x'},{x:.5,y:.5,text:''},{x:.5,y:.5,text:'x'.repeat(301)},null]) await assert.rejects(create([comment]),/评论/);
+ await assert.rejects(create({}),/评论/);
+ await assert.rejects(create(Array.from({length:21},()=>({x:0,y:0,text:'x'}))),/20 条评论/);
+ const extra=await jobs.assets.save(png);const many=Array.from({length:20},()=>({x:0,y:0,text:'字'.repeat(300)}));
+ await assert.rejects(jobs.create({prompt:'edit',references:[{assetId:asset.id,comments:many},{assetId:extra.id,comments:many}]}),/总计不得超过 8000/);
+ await assert.rejects(jobs.create({prompt:'',references:[{assetId:asset.id}]}),/生图需求/);
+ assert.equal(calls,0);
+});

@@ -120,7 +120,7 @@ node scripts/codex.mjs --uninstall
 | `server/mcp-bridge.mjs` | API 路由白名单及 256 KiB 图片分片传输 |
 | `server/runtime.mjs`、`server/native-service.mjs` | 服务复用、启动锁、令牌、空闲退出 |
 | `server/index.mjs`、`server/jobs.mjs`、`server/assets.mjs` | HTTP API、任务与历史、图片处理和持久化 |
-| `server/config.mjs`、`server/provider.mjs`、`server/network.mjs` | 用户配置、模型协议、系统证书信任和错误分类 |
+| `server/config.mjs`、`server/channels.mjs`、`server/provider.mjs`、`server/network.mjs` | 扫描配置、自定义渠道、模型列表及协议、系统证书信任和错误分类 |
 | `desktop/` | 安装注册、源码数据导入辅助、打包后自检 |
 | `scripts/` | UI 构建、源码注册、桌面打包、受限页面验证 |
 | `inject/` | 旧版 CDP 注入实现，保留作历史参考；0.3.x 安装包不使用 |
@@ -135,7 +135,9 @@ npm run build:ui
 npm test
 ```
 
-Windows 对应 `npm.cmd run build:ui`、`npm.cmd test`。截至 0.3.2 共 40 项测试，覆盖凭据选择、文本串流、多图编辑、选区保护、扩图、任务取消、版本分支、数据迁移、跨站限制、安装配置保留、服务复用、MCP 传输及 TLS 验证。测试使用临时目录和模拟网关，不需要真实 API Key，也不会付费生图。
+Windows 对应 `npm.cmd run build:ui`、`npm.cmd test`。截至 0.4.1 共 43 项测试，覆盖凭据选择、文本串流、多图编辑、选区保护、扩图、任务取消、版本分支、位置评论及坐标校验、数据迁移、跨站限制、安装配置保留、服务复用、MCP 传输及 TLS 验证。测试使用临时目录和模拟网关，不需要真实 API Key，也不会付费生图。
+
+2026-10-15 当前源码新增自定义生图渠道后共 53 项测试通过，覆盖独立文本/图片配置、渠道增删改与默认持久化、扫描配置只读、模型列表错误/超时/大小限制、生成中的配置快照及 HTTP/MCP 权限。已验证普通网页与禁用页面网络、未授予 `allow-forms` 的 MCP 宿主模拟环境中的渠道操作、明暗主题、390px 窄屏和缺少 Codex 配置时的直接生图；未调用真实付费模型，未覆盖真实 Codex 桌面安装验收或构建新版安装包。
 
 `test/fixtures/localhost-test-*.pem` 是本地 HTTPS 测试专用证书及测试私钥，不是产品或用户的凭据，不应安装为系统信任证书。测试代码只在自己的进程内临时设置测试信任，结束时恢复。
 

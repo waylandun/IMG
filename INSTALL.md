@@ -1,6 +1,8 @@
 # Imageboard 安装、升级与卸载
 
-适用版本：**0.3.2**。日常使用流程是：**打开 Codex → 点击左侧 Imageboard → 开始创作**。Imageboard 安装程序只负责首次注册；Codex 会启动其内置 MCP 运行环境，图片服务按需加载。
+适用版本：**0.4.1**。日常使用流程是：**打开 Codex → 点击左侧 Imageboard → 开始创作**。Imageboard 安装程序只负责首次注册；Codex 会启动其内置 MCP 运行环境，图片服务按需加载。
+
+当前源码已新增[自定义生图渠道](README.md#自定义生图渠道当前源码)，现有 0.4.1 安装包尚未包含。源码版可配置独立图片网关；未配置 Codex 文本模型时仍可直接生图，提示词优化不可用。
 
 开发者请先阅读 [README](README.md) 和[开发指南](docs/development.md)。
 
@@ -19,9 +21,9 @@
 
 | 设备 | 文件 |
 | --- | --- |
-| macOS Apple Silicon（M 系列） | `Imageboard-0.3.2-mac-arm64.dmg` |
-| macOS Intel | `Imageboard-0.3.2-mac-x64.dmg` |
-| Windows x64 | `Imageboard-0.3.2-win-x64.exe` |
+| macOS Apple Silicon（M 系列） | `Imageboard-0.4.1-mac-arm64.dmg` |
+| macOS Intel | `Imageboard-0.4.1-mac-x64.dmg` |
+| Windows x64 | `Imageboard-0.4.1-win-x64.exe` |
 
 macOS 可在「关于本机」查看芯片类型。Windows 可在「设置 → 系统 → 系统信息」查看系统类型。目前不提供原生 Windows ARM64 安装包。
 
@@ -37,7 +39,7 @@ macOS 可在「关于本机」查看芯片类型。Windows 可在「设置 → �
 
 ## Windows 安装
 
-1. 运行 `Imageboard-0.3.2-win-x64.exe`，完成当前用户安装，可自行选择固定安装目录。
+1. 运行 `Imageboard-0.4.1-win-x64.exe`，完成当前用户安装，可自行选择固定安装目录。
 2. 从开始菜单或桌面打开 **Imageboard**，完成 MCP 注册。若安装器结束时已启动 Imageboard，则不必重复打开。
 3. 退出并重新打开 Codex。
 4. 在左侧「更多」中固定 **Imageboard**，以后直接从该图标进入。
@@ -86,7 +88,7 @@ experimental_bearer_token = "替换为你已有的 API 凭据"
 
 ## 升级
 
-### 从 0.3.x 升级
+### 从 0.3.x / 0.4.x 升级
 
 1. 等待当前创作结束，备份需要保留的作品。
 2. 关闭 Imageboard 页面并退出 Codex。图片服务独立运行，需等其空闲退出（约五分钟）后再替换应用文件。
@@ -111,6 +113,8 @@ experimental_bearer_token = "替换为你已有的 API 凭据"
 | 源码浏览器模式 | 项目 `.data/` |
 
 备份或迁移时，在服务停止后复制 `jobs.json`、`assets/`、`images/` 和 `backups/`（如存在）。这些文件应成套保留，单独复制 `jobs.json` 无法恢复图片。不要把 `native-runtime.json`、`native-start.lock` 或旧 Codex profile 当作作品迁移到另一台电脑。
+
+源码版的自定义渠道另存于 `channels.json`，其中包含 API Key 和默认渠道选择。需要迁移渠道时单独安全备份该文件；普通作品导入不复制它。
 
 `native-service.log` 位于作品目录。原生图片服务使用随机回环端口和临时令牌，多个 MCP 客户端复用一个服务；关闭页面不会主动取消运行中的生成，空闲五分钟且没有任务后自动退出。
 

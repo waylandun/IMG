@@ -53,3 +53,11 @@ test('rejects credentials embedded in URLs and malformed TOML without leaking se
   await writeFile(path.join(home, 'config.toml'), 'broken secret token = [');
   await assert.rejects(loadConfig({ env: { CODEX_HOME: home } }), /无法读取 config.toml/);
 });
+
+test('missing text model or unsupported text protocol does not block scanned image credentials', async t => {
+  const home = await fixture(t, '[model_providers.openai]\nwire_api="unsupported"', { OPENAI_API_KEY: 'image-secret' });
+  const config = await loadConfig({ env: { CODEX_HOME: home } });
+  assert.equal(config.public.promptReady, false);
+  assert.equal(config.public.imageReady, true);
+  assert.equal(config.imageError, '');
+});

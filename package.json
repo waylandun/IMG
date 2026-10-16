@@ -1,6 +1,6 @@
 {
   "name": "codex-imageboard",
-  "version": "0.3.2",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "复用 Codex 配置的本地生图面板",

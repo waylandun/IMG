@@ -8,6 +8,7 @@ import { Jobs, isActive } from './jobs.mjs';
 import { ProviderError } from './provider.mjs';
 import { embeddedDocument } from './embed.mjs';
 import { ASSET_LIMIT } from './assets.mjs';
+import { Channels } from './channels.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const json = (res, status, data) => {
@@ -33,7 +34,9 @@ async function body(req) {
 
 export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR || path.join(root, '.data'), configLoader = loadConfig, refine, generate, accessToken } = {}) {
   const capability = randomBytes(32).toString('hex');
-  const jobs = new Jobs({ directory, configLoader, refine, generate });
+  const channels = new Channels({ directory, configLoader });
+  await channels.init();
+  const jobs = new Jobs({ directory, configLoader: () => channels.resolve(), refine, generate });
   await jobs.init();
   const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -55,9 +58,9 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
       && typeof receivedCapability === 'string'
       && Buffer.byteLength(receivedCapability) === Buffer.byteLength(capability)
       && timingSafeEqual(Buffer.from(receivedCapability), Buffer.from(capability));
-    const embeddedRoute = /^\/api\/(config|jobs(?:\/[a-f0-9-]{36}(?:\/cancel)?)?|assets(?:\/[a-f0-9-]{36})?|images\/[a-f0-9-]{36}\.png)(?:\?.*)?$/.test(req.url);
+    const embeddedRoute = /^\/api\/(config(?:\/default-channel)?|channels(?:\/(?:models|codex|[a-f0-9-]{36}))?|jobs(?:\/[a-f0-9-]{36}(?:\/cancel)?)?|assets(?:\/[a-f0-9-]{36})?|images\/[a-f0-9-]{36}\.png)(?:\?.*)?$/.test(req.url);
     if (req.method === 'OPTIONS' && req.headers.origin === 'null' && embeddedRoute) {
-      res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Methods': 'GET, POST, PATCH', 'Access-Control-Allow-Headers': 'content-type, x-imageboard-embed, x-imageboard-filename', 'Access-Control-Max-Age': '300', Vary: 'Origin' });
+      res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE', 'Access-Control-Allow-Headers': 'content-type, x-imageboard-embed, x-imageboard-filename', 'Access-Control-Max-Age': '300', Vary: 'Origin' });
       res.end(); return;
     }
     if (embedded && embeddedRoute) {
@@ -69,16 +72,27 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
     }
     try {
       const url = new URL(req.url, origin);
-      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'codex-imageboard', version: '0.3.2', native: !!accessToken }); return; }
+      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'codex-imageboard', version: '0.4.1', native: !!accessToken }); return; }
       if (req.method === 'GET' && url.pathname === '/api/embed-document') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(await embeddedDocument(root, origin, capability)); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/config') {
-        try { json(res, 200, (await configLoader()).public); }
-        catch (error) { json(res, 200, { ready: false, error: error.message }); }
+        json(res, 200, (await channels.resolve()).public);
         return;
       }
+      if (req.method === 'PATCH' && url.pathname === '/api/config/default-channel') {
+        json(res, 200, await channels.setDefault((await body(req)).channelId)); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/channels') {
+        json(res, 201, await channels.create(await body(req))); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/channels/models') {
+        json(res, 200, await channels.models(await body(req))); return;
+      }
+      const channelMatch = url.pathname.match(/^\/api\/channels\/(codex|[a-f0-9-]{36})$/);
+      if (channelMatch && req.method === 'PATCH') { json(res, 200, await channels.update(channelMatch[1], await body(req))); return; }
+      if (channelMatch && req.method === 'DELETE') { json(res, 200, await channels.remove(channelMatch[1])); return; }
       if (req.method === 'GET' && url.pathname === '/api/jobs') { json(res, 200, jobs.list()); return; }
       if (req.method === 'POST' && url.pathname === '/api/jobs') { json(res, 202, await jobs.create(await body(req))); return; }
       if (req.method === 'POST' && url.pathname === '/api/assets') {
@@ -124,7 +138,7 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
         res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=86400', ...(url.searchParams.has('download') ? { 'Content-Disposition': `attachment; filename="imageboard-${image[1].slice(0,8)}.png"` } : {}) });
         res.end(bytes); return;
       }
-      const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/editor.js': ['editor.js', 'text/javascript'], '/theme.js': ['theme.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
+      const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/config-panel.js': ['config-panel.js', 'text/javascript'], '/editor.js': ['editor.js', 'text/javascript'], '/reference-editor.js': ['reference-editor.js', 'text/javascript'], '/theme.js': ['theme.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
       if (req.method === 'GET' && files[url.pathname]) {
         const [file, mime] = files[url.pathname];
         res.writeHead(200, { 'Content-Type': `${mime}; charset=utf-8`, 'Cache-Control': 'no-cache' });

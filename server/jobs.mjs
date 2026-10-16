@@ -88,7 +88,7 @@ export class Jobs extends EventEmitter {
     try {
       const prompt = typeof input.prompt === 'string' ? input.prompt.trim() : '';
       const refinedPrompt = typeof input.refinedPrompt === 'string' ? input.refinedPrompt.trim() : '';
-      if (!prompt || prompt.length > 8_000 || refinedPrompt.length > 16_000) bad('请输入 1–8000 字的生图需求。');
+      if (prompt.length > 8_000 || refinedPrompt.length > 16_000) bad('生图需求不得超过 8000 字。');
       const size = input.size || 'auto', quality = input.quality || 'auto', format = input.format || 'png';
       const count = input.count ?? 1, compression = input.compression ?? 90;
       const optimize = input.optimize !== false, useVision = input.useVision !== false, action = input.action || 'none';
@@ -102,12 +102,22 @@ export class Jobs extends EventEmitter {
       if (input.mode && !['refine', 'generate'].includes(input.mode)) bad('任务类型无效。');
       if (input.references !== undefined && (!Array.isArray(input.references) || input.references.length > 16)) bad('最多上传 16 张参考图。');
       let references = [];
+      let commentLength = 0;
       for (const ref of input.references || []) {
         if (!ref || typeof ref !== 'object' || !Object.hasOwn(ROLES, ref.role || 'general') || (ref.note !== undefined && (typeof ref.note !== 'string' || ref.note.length > 300))) bad('参考图用途或说明无效。');
         const asset = await this.assets.get(ref.assetId);
         if (asset.mask) bad('蒙版不能作为普通参考图。');
-        references.push({ assetId: asset.id, asset, role: ref.role || 'general', note: ref.note || '' });
+        if (ref.comments !== undefined && (!Array.isArray(ref.comments) || ref.comments.length > 20)) bad('每张参考图最多添加 20 条评论。');
+        const comments = (ref.comments || []).map(comment => {
+          if (!comment || !Number.isFinite(comment.x) || !Number.isFinite(comment.y) || comment.x < 0 || comment.x > 1 || comment.y < 0 || comment.y > 1) bad('评论位置必须在图片范围内。');
+          if (typeof comment.text !== 'string' || !comment.text.trim() || comment.text.trim().length > 300) bad('每条评论应为 1–300 字。');
+          const text = comment.text.trim(); commentLength += text.length;
+          return { x: comment.x, y: comment.y, text };
+        });
+        references.push({ assetId: asset.id, asset, role: ref.role || 'general', note: ref.note || '', comments });
       }
+      if (commentLength > 8000) bad('图片评论总计不得超过 8000 字。');
+      if (!prompt && !commentLength) bad('请输入生图需求，或为参考图添加评论。');
       if (new Set(references.map(ref => ref.assetId)).size !== references.length) bad('同一张参考图只能添加一次。');
       let parent = null;
       if (input.parent) {
@@ -116,7 +126,8 @@ export class Jobs extends EventEmitter {
         if (!previous || previous.deletedAt || !Number.isInteger(index) || !previous.outputs?.[index]) bad('要继续编辑的版本不存在或已移入回收站。');
         const asset = previous.outputs[index];
         parent = { jobId: previous.id, outputIndex: index, assetId: asset.id };
-        references = [{ assetId: asset.id, asset, role: 'base', note: '在这张图上继续修改' }, ...references.filter(ref => ref.assetId !== asset.id)];
+        const comments = references.find(ref => ref.assetId === asset.id)?.comments || [];
+        references = [{ assetId: asset.id, asset, role: 'base', note: '在这张图上继续修改', comments }, ...references.filter(ref => ref.assetId !== asset.id)];
       }
       if (references.length > 16) bad('包括原图在内最多 16 张参考图。');
       if (action !== 'none' && !references.length) bad('请先上传或选择要编辑的图片。');
@@ -126,16 +137,20 @@ export class Jobs extends EventEmitter {
         preparedEdit = await this.assets.prepare({ ...input.edit, sourceId: references[0].assetId });
         if (background === 'auto') background = preparedEdit.type === 'inpaint' && references[0].asset.transparent ? 'transparent' : 'opaque';
       }
-      const config = await this.configLoader();
-      if (config.error) throw new ProviderError(config.error, 422);
+      const loaded = await this.configLoader();
+      const config = { promptConfig: loaded.promptConfig || loaded, imageConfig: loaded.imageConfig || loaded };
+      const needsPrompt = !refinedPrompt && (optimize || input.mode === 'refine');
+      if (input.mode !== 'refine' && config.imageConfig.error) throw new ProviderError(config.imageConfig.error, 422);
+      if (needsPrompt && config.promptConfig.error) throw new ProviderError(`提示词优化不可用：${config.promptConfig.error} 可关闭优化后直接生图。`, 422);
       const id = randomUUID();
       const job = {
         schemaVersion: 2, id, rootId: parent ? this.get(parent.jobId).rootId : id, parent,
-        prompt, refinedPrompt, title: prompt.slice(0, 100), tags: [], favorite: false, deletedAt: null,
+        prompt, refinedPrompt, title: (prompt || references.flatMap(ref => ref.comments || [])[0]?.text || '图片创作').slice(0, 100), tags: [], favorite: false, deletedAt: null,
         size, quality, count, format, compression, background, optimize, useVision, action, references,
         edit: preparedEdit, outputs: [], mode: input.mode || 'generate',
-        status: refinedPrompt || !optimize ? 'generating' : 'refining',
-        model: config.model, imageModel: config.imageModel,
+        status: needsPrompt ? 'refining' : 'generating',
+        model: config.promptConfig.model, imageModel: config.imageConfig.imageModel,
+        channelId: loaded.public?.defaultChannelId, channelName: loaded.public?.channelName,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
       this.items.set(job.id, job); await this.persist();
@@ -147,7 +162,13 @@ export class Jobs extends EventEmitter {
   instructions(job) {
     const lines = [];
     if (job.parent) lines.push('这是连续编辑任务：以图1为当前版本，按本次需求修改，保留未要求改变的内容。');
-    job.references.forEach((ref, i) => lines.push(`图${i + 1}的用途：${ROLES[ref.role]}。${ref.note}`));
+    job.references.forEach((ref, i) => {
+      lines.push(`图${i + 1}的用途：${ROLES[ref.role]}。${ref.note}`);
+      if (ref.comments?.length) {
+        lines.push(`图像 ${i + 1} 的位置评论（坐标以图片左上角为原点，x 向右、y 向下，均为图片宽高的百分比；按位置理解修改对象）：`);
+        ref.comments.forEach((comment, index) => lines.push(`${index + 1}. (x: ${Number((comment.x * 100).toFixed(1))}%, y: ${Number((comment.y * 100).toFixed(1))}%) ${comment.text}`));
+      }
+    });
     if (ACTIONS[job.action]) lines.push(ACTIONS[job.action]);
     if (job.edit?.type === 'inpaint') lines.push('仅在图1的蒙版透明区域内进行修改，保持原有构图、光线和未选中区域。');
     if (job.edit?.type === 'outpaint') lines.push('图1是扩展后的画布，仅自然补全透明区域，与原图内容、透视和光线连续，保留原图。');
@@ -162,7 +183,7 @@ export class Jobs extends EventEmitter {
       if (!job.refinedPrompt) {
         const references = job.useVision && (job.optimize || job.mode === 'refine') ? await Promise.all(job.references.map(async ref => ({ roleLabel: ROLES[ref.role], note: ref.note, dataUrl: await this.assets.visionImage(ref.assetId) }))) : [];
         const refinedPrompt = job.optimize || job.mode === 'refine'
-          ? await this.refine(config, `${context}\n用户本次要求：${job.prompt}`, { size: job.size, signal, references })
+          ? await this.refine(config.promptConfig, `${context}\n用户本次要求：${job.prompt}`, { size: job.size, signal, references })
           : job.prompt;
         signal.throwIfAborted(); await this.update(job, { refinedPrompt });
       }
@@ -176,7 +197,7 @@ export class Jobs extends EventEmitter {
       // persisting it immediately so a later failure/cancellation cannot discard it.
       for (let index = 0; index < job.count; index++) {
         signal.throwIfAborted();
-        const result = await this.generate(config, context ? `${context}\n\n${job.refinedPrompt}` : job.refinedPrompt, {
+        const result = await this.generate(config.imageConfig, context ? `${context}\n\n${job.refinedPrompt}` : job.refinedPrompt, {
           size: job.edit?.size || job.size, quality: job.quality, count: 1, format: job.format,
           compression: job.compression, background: job.background, references: refs, mask, signal,
         });

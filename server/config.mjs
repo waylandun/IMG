@@ -53,19 +53,22 @@ export async function loadConfig({ env = process.env, home = os.homedir() } = {}
   const hasHeaderCredential = Object.keys(headers).some(name => /authorization|api[-_]?key/i.test(name));
   if (!credentialSource && hasHeaderCredential) credentialSource = 'Codex 请求头';
   const wireApi = provider.wire_api || 'responses';
-  let error = !model ? '请先在 Codex config.toml 中设置默认 model。' : '';
+  let promptError = !model ? '请先在 Codex config.toml 中设置默认 model。' : '';
+  let imageError = '';
   if (!key && !hasHeaderCredential) {
-    error ||= provider.env_key
+    imageError = provider.env_key
       ? `当前进程缺少 provider 所需的 ${provider.env_key} 环境变量。`
       : '未找到可用于 Images API 的 API Key / Bearer 凭据。仅有 ChatGPT 登录态不能直接调用此接口。';
   }
-  if (provider.auth) error = '此版本尚不支持 Codex 动态凭据解析器，请使用 provider 的 env_key 或 Bearer 配置。';
-  if (!['responses', 'chat'].includes(wireApi)) error = `暂不支持 ${wireApi} 协议。`;
+  if (provider.auth) imageError = '此版本尚不支持 Codex 动态凭据解析器，请使用 provider 的 env_key 或 Bearer 配置。';
+  if (!['responses', 'chat'].includes(wireApi)) promptError = 'Codex 提示词模型协议暂不支持，请使用 responses 或 chat。';
+  promptError ||= imageError;
+  const error = promptError || imageError;
   return {
     model, imageModel: IMAGE_MODEL, providerId, wireApi,
-    baseUrl: base.href.replace(/\/$/, ''), headers, error,
+    baseUrl: base.href.replace(/\/$/, ''), headers, error, promptError, imageError,
     public: {
-      ready: !error, model: model || '未配置', imageModel: IMAGE_MODEL,
+      ready: !error, promptReady: !promptError, imageReady: !imageError, model: model || '未配置', imageModel: IMAGE_MODEL,
       provider: provider.name || providerId, baseUrl: base.href.replace(/\/$/, ''),
       credentialSource: credentialSource || '未找到', profile: profile || null, error,
     },
