@@ -82,7 +82,13 @@ export class Jobs extends EventEmitter {
     }
     await this.update(job, patch); return job;
   }
-  async create(input) {
+  async create(input, internal = {}) {
+    if (internal.jobId && this.items.has(internal.jobId)) {
+      const existing = this.items.get(internal.jobId);
+      if (existing.conversationId !== internal.conversationId || existing.turnId !== internal.turnId) throw new ProviderError('图片任务标识已使用。', 409);
+      return existing;
+    }
+    internal.signal?.throwIfAborted();
     if (this.starting || [...this.items.values()].some(isActive)) throw new ProviderError('已有图片任务正在运行，请等待完成或先停止。', 409);
     this.starting = true;
     try {
@@ -137,12 +143,13 @@ export class Jobs extends EventEmitter {
         preparedEdit = await this.assets.prepare({ ...input.edit, sourceId: references[0].assetId });
         if (background === 'auto') background = preparedEdit.type === 'inpaint' && references[0].asset.transparent ? 'transparent' : 'opaque';
       }
-      const loaded = await this.configLoader();
+      const loaded = internal.config || await this.configLoader();
       const config = { promptConfig: loaded.promptConfig || loaded, imageConfig: loaded.imageConfig || loaded };
       const needsPrompt = !refinedPrompt && (optimize || input.mode === 'refine');
       if (input.mode !== 'refine' && config.imageConfig.error) throw new ProviderError(config.imageConfig.error, 422);
       if (needsPrompt && config.promptConfig.error) throw new ProviderError(`提示词优化不可用：${config.promptConfig.error} 可关闭优化后直接生图。`, 422);
-      const id = randomUUID();
+      internal.signal?.throwIfAborted();
+      const id = internal.jobId || randomUUID();
       const job = {
         schemaVersion: 2, id, rootId: parent ? this.get(parent.jobId).rootId : id, parent,
         prompt, refinedPrompt, title: (prompt || references.flatMap(ref => ref.comments || [])[0]?.text || '图片创作').slice(0, 100), tags: [], favorite: false, deletedAt: null,
@@ -151,11 +158,14 @@ export class Jobs extends EventEmitter {
         status: needsPrompt ? 'refining' : 'generating',
         model: config.promptConfig.model, imageModel: config.imageConfig.imageModel,
         channelId: loaded.public?.defaultChannelId, channelName: loaded.public?.channelName,
+        ...(internal.conversationId ? { conversationId: internal.conversationId, turnId: internal.turnId } : {}),
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
       this.items.set(job.id, job); await this.persist();
       const controller = new AbortController(); this.controllers.set(job.id, controller);
-      void this.run(job, config, controller).catch(() => {});
+      const cancel = () => controller.abort(internal.signal.reason);
+      if (internal.signal?.aborted) cancel(); else internal.signal?.addEventListener('abort', cancel, { once: true });
+      void this.run(job, config, controller).catch(() => {}).finally(() => internal.signal?.removeEventListener('abort', cancel));
       return job;
     } finally { this.starting = false; }
   }

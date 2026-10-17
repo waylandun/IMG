@@ -9,8 +9,10 @@ import { ProviderError } from './provider.mjs';
 import { embeddedDocument } from './embed.mjs';
 import { ASSET_LIMIT } from './assets.mjs';
 import { Channels } from './channels.mjs';
+import { Conversations } from './conversations.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const json = (res, status, data) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(data));
@@ -32,12 +34,14 @@ async function body(req) {
   catch { throw new ProviderError('JSON 格式无效。', 400); }
 }
 
-export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR || path.join(root, '.data'), configLoader = loadConfig, refine, generate, accessToken } = {}) {
+export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR || path.join(root, '.data'), configLoader = loadConfig, refine, generate, respond, accessToken } = {}) {
   const capability = randomBytes(32).toString('hex');
   const channels = new Channels({ directory, configLoader });
   await channels.init();
   const jobs = new Jobs({ directory, configLoader: () => channels.resolve(), refine, generate });
   await jobs.init();
+  const conversations = new Conversations({ directory, jobs, configLoader: () => channels.resolve(), respond });
+  await conversations.init();
   const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -58,7 +62,7 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
       && typeof receivedCapability === 'string'
       && Buffer.byteLength(receivedCapability) === Buffer.byteLength(capability)
       && timingSafeEqual(Buffer.from(receivedCapability), Buffer.from(capability));
-    const embeddedRoute = /^\/api\/(config(?:\/default-channel)?|channels(?:\/(?:models|codex|[a-f0-9-]{36}))?|jobs(?:\/[a-f0-9-]{36}(?:\/cancel)?)?|assets(?:\/[a-f0-9-]{36})?|images\/[a-f0-9-]{36}\.png)(?:\?.*)?$/.test(req.url);
+    const embeddedRoute = /^\/api\/(config(?:\/default-channel)?|channels(?:\/(?:models|codex|[a-f0-9-]{36}))?|conversations(?:\/[a-f0-9-]{36}(?:\/(?:messages|cancel))?)?|jobs(?:\/[a-f0-9-]{36}(?:\/cancel)?)?|assets(?:\/[a-f0-9-]{36})?|images\/[a-f0-9-]{36}\.png)(?:\?.*)?$/.test(req.url);
     if (req.method === 'OPTIONS' && req.headers.origin === 'null' && embeddedRoute) {
       res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE', 'Access-Control-Allow-Headers': 'content-type, x-imageboard-embed, x-imageboard-filename', 'Access-Control-Max-Age': '300', Vary: 'Origin' });
       res.end(); return;
@@ -72,7 +76,7 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
     }
     try {
       const url = new URL(req.url, origin);
-      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'codex-imageboard', version: '0.4.1', native: !!accessToken }); return; }
+      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'codex-imageboard', version, native: !!accessToken }); return; }
       if (req.method === 'GET' && url.pathname === '/api/embed-document') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(await embeddedDocument(root, origin, capability)); return;
@@ -93,8 +97,19 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
       const channelMatch = url.pathname.match(/^\/api\/channels\/(codex|[a-f0-9-]{36})$/);
       if (channelMatch && req.method === 'PATCH') { json(res, 200, await channels.update(channelMatch[1], await body(req))); return; }
       if (channelMatch && req.method === 'DELETE') { json(res, 200, await channels.remove(channelMatch[1])); return; }
+      if (req.method === 'GET' && url.pathname === '/api/conversations') { json(res, 200, conversations.list()); return; }
+      const conversationMatch = url.pathname.match(/^\/api\/conversations\/([a-f0-9-]{36})(?:\/(messages|cancel))?$/);
+      if (conversationMatch) {
+        const [, id, action] = conversationMatch;
+        if (req.method === 'GET' && !action) { json(res, 200, conversations.get(id)); return; }
+        if (req.method === 'POST' && action === 'messages') { json(res, 202, await conversations.send(id, await body(req))); return; }
+        if (req.method === 'POST' && action === 'cancel') { await body(req); json(res, 200, conversations.cancel(id)); return; }
+      }
       if (req.method === 'GET' && url.pathname === '/api/jobs') { json(res, 200, jobs.list()); return; }
-      if (req.method === 'POST' && url.pathname === '/api/jobs') { json(res, 202, await jobs.create(await body(req))); return; }
+      if (req.method === 'POST' && url.pathname === '/api/jobs') {
+        if (conversations.isBusy()) throw new ProviderError('请等待当前对话处理完成，也可以先停止。', 409);
+        json(res, 202, await jobs.create(await body(req))); return;
+      }
       if (req.method === 'POST' && url.pathname === '/api/assets') {
         if (!['image/png', 'image/jpeg', 'image/webp'].includes(req.headers['content-type']?.split(';')[0])) throw new ProviderError('请选择 PNG、JPEG 或 WebP 图片。', 415);
         let name = '参考图';
@@ -150,14 +165,14 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
       else res.end();
     }
   });
-  server.on('close', () => jobs.close());
-  return { server, jobs };
+  server.on('close', () => { conversations.close(); jobs.close(); });
+  return { server, jobs, conversations };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { server, jobs } = await createServer();
+  const { server, jobs, conversations } = await createServer();
   const port = Number(process.env.IMAGEBOARD_PORT || 47824);
   server.on('error', error => { console.error(error.code === 'EADDRINUSE' ? `端口 ${port} 已被占用。` : '本地服务启动失败。'); process.exitCode = 1; });
   server.listen(port, '127.0.0.1', () => console.log(`Imageboard 已就绪：http://127.0.0.1:${port}`));
-  for (const event of ['SIGINT', 'SIGTERM']) process.on(event, () => { jobs.close(); server.close(); server.closeAllConnections(); });
+  for (const event of ['SIGINT', 'SIGTERM']) process.on(event, () => { conversations.close(); jobs.close(); server.close(); server.closeAllConnections(); });
 }

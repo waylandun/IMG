@@ -1,6 +1,7 @@
 import { App } from '@modelcontextprotocol/ext-apps';
+import { version } from '../package.json';
 
-const app = new App({ name: 'Imageboard', version: '0.4.1' }, {}, { autoResize: false });
+const app = new App({ name: 'Imageboard', version }, {}, { autoResize: false });
 function hostTheme(theme) {
   if (theme === 'light' || theme === 'dark') window.dispatchEvent(new CustomEvent('imageboard-host-theme', { detail: { theme } }));
 }

@@ -55,12 +55,12 @@ export function createConfigPanel({ api, onConfig, notify }) {
       card.append(heading);
       const details = node('dl', 'channel-details');
       const entries = channel.source === 'codex'
-        ? [['提示词模型', channel.model], ['生图模型', channel.imageModel], ['服务提供方', channel.provider], ['API 地址', channel.baseUrl], ['凭据来源', channel.credentialSource], ['Profile', channel.profile || '默认']]
+        ? [['聊天模型', channel.model], ['生图模型', channel.imageModel], ['服务提供方', channel.provider], ['API 地址', channel.baseUrl], ['凭据来源', channel.credentialSource], ['Profile', channel.profile || '默认']]
         : [['生图模型', channel.imageModel], ['API 地址', channel.baseUrl], ['API Key', '已保存 · 不回显']];
       for (const [label, value] of entries) details.append(node('dt', '', label), node('dd', '', value || '—'));
       card.append(details);
       if (!channel.ready) card.append(node('p', 'channel-help', channel.error || '配置不可用'));
-      if (channel.source === 'codex' && !channel.promptReady) card.append(node('p', 'channel-help', `提示词优化不可用：${channel.promptError}`));
+      if (channel.source === 'codex' && !channel.promptReady) card.append(node('p', 'channel-help', `聊天与提示词整理不可用：${channel.promptError}`));
       const actions = node('div', 'channel-actions');
       if (channel.id !== config.defaultChannelId) actions.append(action('设为默认', () => mutate(() => request('/api/config/default-channel', 'PATCH', { channelId: channel.id }), '默认生图渠道已切换')));
       if (channel.source === 'custom') {

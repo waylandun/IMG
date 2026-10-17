@@ -13,7 +13,7 @@
 
 从本项目维护者取得对应系统的安装包，或按[构建指南](docs/development.md#构建安装包)生成。
 
-| 系统 | 0.4.1 安装文件 |
+| 系统 | 0.5.0 安装文件 |
 | --- | --- |
 | macOS，M 系列芯片 | `Imageboard-0.4.1-mac-arm64.dmg` |
 | macOS，Intel 芯片 | `Imageboard-0.4.1-mac-x64.dmg` |
