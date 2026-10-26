@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, access, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { updateConfiguration, installNative } from '../desktop/install.mjs';
 import { parse } from 'smol-toml';
 import data from '../desktop/data.cjs';
+import { installChatSkill } from '../desktop/skill.mjs';
 
 const settings = { executable: path.resolve('App Space/Imageboard'), root: path.resolve('App Space/resources/app'), directory: path.resolve('User Space/data') };
 test('native install preserves provider secrets and comments, is repeatable, and removes only its own block', () => {
@@ -28,10 +29,55 @@ test('native install backs up and writes valid user configuration without touchi
   t.after(() => rm(codexHome, { recursive: true, force: true }));
   await writeFile(path.join(codexHome, 'config.toml'), 'model="test"\n');
   assert.equal((await installNative(settings, { codexHome })).changed, true);
+  assert.match(await readFile(path.join(codexHome, 'skills/imageboard/SKILL.md'), 'utf8'), /generate_image/);
   assert.equal((await installNative(settings, { codexHome })).changed, false);
   assert.equal(parse(await readFile(path.join(codexHome, 'config.toml'), 'utf8')).model, 'test');
   await installNative(settings, { codexHome, remove: true });
   assert.equal(parse(await readFile(path.join(codexHome, 'config.toml'), 'utf8')).mcp_servers, undefined);
+  await assert.rejects(access(path.join(codexHome, 'skills/imageboard/SKILL.md')));
+});
+
+test('skill updates and uninstall preserve user edits and unrelated files', async t => {
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), 'imageboard-skill-'));
+  t.after(() => rm(codexHome, { recursive: true, force: true }));
+  const installed = await installChatSkill(codexHome);
+  assert.equal(installed.status, 'installed'); assert.equal((await installChatSkill(codexHome)).status, 'unchanged');
+  const skill = path.join(installed.path, 'SKILL.md');
+  await writeFile(skill, 'User customized instructions');
+  await writeFile(path.join(installed.path, 'notes.md'), 'User notes');
+  assert.equal((await installChatSkill(codexHome)).status, 'preserved');
+  assert.equal((await installChatSkill(codexHome, { remove: true })).status, 'preserved');
+  assert.equal(await readFile(skill, 'utf8'), 'User customized instructions');
+  assert.equal(await readFile(path.join(installed.path, 'notes.md'), 'utf8'), 'User notes');
+  assert.equal((await installChatSkill(codexHome)).status, 'preserved');
+});
+
+test('skill installation does not follow an existing user symlink', { skip: process.platform === 'win32' }, async t => {
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), 'imageboard-skill-link-'));
+  t.after(() => rm(codexHome, { recursive: true, force: true }));
+  await mkdir(path.join(codexHome, 'skills'));
+  const target = path.join(codexHome, 'custom'); await mkdir(target);
+  await symlink(target, path.join(codexHome, 'skills/imageboard'));
+  assert.equal((await installChatSkill(codexHome)).status, 'preserved');
+  await assert.rejects(access(path.join(target, 'SKILL.md')));
+});
+
+test('skill upgrade replaces an unchanged managed version and repairs interrupted metadata updates', async t => {
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), 'imageboard-skill-upgrade-'));
+  t.after(() => rm(codexHome, { recursive: true, force: true }));
+  const installed = await installChatSkill(codexHome);
+  const skill = path.join(installed.path, 'SKILL.md'), marker = path.join(installed.path, '.imageboard-managed.json');
+  const expected = await readFile(skill, 'utf8'), previous = JSON.parse(await readFile(marker));
+  const old = 'Previous managed version';
+  previous.files['SKILL.md'] = createHash('sha256').update(old).digest('hex');
+  await writeFile(skill, old); await writeFile(marker, JSON.stringify(previous));
+  assert.equal((await installChatSkill(codexHome)).status, 'installed');
+  assert.equal(await readFile(skill, 'utf8'), expected);
+  // A crash may leave new files with the previous install's metadata.
+  await writeFile(marker, JSON.stringify(previous));
+  assert.equal((await installChatSkill(codexHome)).status, 'installed');
+  assert.equal((await installChatSkill(codexHome, { remove: true })).status, 'removed');
+  await assert.rejects(access(skill));
 });
 
 test('development import preserves works and excludes config, profiles and symlinks', async t => {

@@ -45,7 +45,7 @@ for (const target of targets) {
   const stage = path.join(root, 'work/desktop-build', target);
   await rm(stage, { recursive: true, force: true }); await mkdir(stage, { recursive: true });
   // This allowlist deliberately excludes .data, work, Codex profiles and all user config.
-  for (const directory of ['server', 'web', 'inject', 'scripts', 'desktop']) await cp(path.join(root, directory), path.join(stage, directory), { recursive: true });
+  for (const directory of ['server', 'web', 'inject', 'scripts', 'desktop', 'skills']) await cp(path.join(root, directory), path.join(stage, directory), { recursive: true });
   await writeFile(path.join(stage, 'package.json'), JSON.stringify(manifest, null, 2));
   await cp(path.join(root, 'package-lock.json'), path.join(stage, 'package-lock.json'));
   console.log(`准备 ${target} 的独立运行依赖…`);
@@ -61,7 +61,7 @@ for (const target of targets) {
       ...(process.env.IMAGEBOARD_ELECTRON_DIST ? { electronDist: path.resolve(process.env.IMAGEBOARD_ELECTRON_DIST) } : {}),
       asar: false, npmRebuild: false, buildDependenciesFromSource: false,
       directories: { output: path.join(output, target), buildResources: path.join(stage, 'desktop/icons') },
-      files: ['package.json', 'server/**/*', 'web/**/*', 'desktop/**/*', 'node_modules/**/*', '!web/mcp-client.src.js', '!desktop/icons/tray*', '!desktop/icons/*.iconset/**/*'],
+      files: ['package.json', 'server/**/*', 'web/**/*', 'desktop/**/*', 'skills/**/*', 'node_modules/**/*', '!web/mcp-client.src.js', '!desktop/icons/tray*', '!desktop/icons/*.iconset/**/*'],
       artifactName: 'Imageboard-${version}-${os}-${arch}.${ext}',
       mac: { category: 'public.app-category.graphics-design', icon: path.join(iconDir, 'icon.icns'), identity: '-', hardenedRuntime: false, gatekeeperAssess: false, extendInfo: { LSUIElement: true } },
       win: { icon: path.join(iconDir, 'icon.ico'), signAndEditExecutable: false },

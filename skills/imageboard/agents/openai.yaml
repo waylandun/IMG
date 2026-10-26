@@ -1,0 +1,4 @@
+interface:
+  display_name: "Imageboard 聊天生图"
+  short_description: "在当前聊天中调用 Imageboard 生图、获取图片并保存作品"
+  default_prompt: "使用 $imageboard 根据当前聊天要求生成一张图片，并直接展示结果。"

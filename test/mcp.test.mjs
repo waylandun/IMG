@@ -20,7 +20,8 @@ test('MCP discovery and resource loading do not start the image service or expos
   const { tools } = await client.listTools();
   const entry = tools.find(x => x.name === 'open_imageboard');
   assert.deepEqual(entry._meta['openai/ui'].entrypoints, [{ type: 'global' }]);
-  assert.ok(tools.filter(x => x !== entry).every(x => x._meta.ui.visibility.join() === 'app'));
+  for (const name of ['imageboard_request', 'imageboard_transfer']) assert.deepEqual(tools.find(x => x.name === name)._meta.ui.visibility, ['app']);
+  for (const name of ['generate_image', 'get_generation']) assert.ok(tools.some(x => x.name === name && !x._meta?.ui));
   const resource = await client.readResource({ uri: entry._meta.ui.resourceUri });
   assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
   assert.deepEqual(resource.contents[0]._meta.ui.csp, { connectDomains: [], resourceDomains: ['data:', 'blob:'] });

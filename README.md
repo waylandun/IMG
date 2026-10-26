@@ -6,6 +6,7 @@
 - 图片生成与编辑：默认使用扫描到的 Codex 渠道与 `gpt-image-2.5-flare`，也可添加自定义生图渠道、选择模型。
 - 界面：单行顶部导航、作品库、历史记录，以及自动切换的黑白灰明暗主题。
 - 平台：提供 macOS Apple Silicon、macOS Intel 和 Windows x64 安装包。
+- 普通聊天生图（0.6.0 起）：在 Codex 主聊天中调用 Imageboard，异步获取图片并保存到同一作品库；详见[聊天生图接入](docs/chat-generation.md)。
 
 [安装与升级](INSTALL.md) · [开发与构建](docs/development.md) · [问题原因与修复记录](docs/2026-10-11-integration-fixes.md) · [文档索引](docs/README.md)
 
@@ -13,11 +14,13 @@
 
 从本项目维护者取得对应系统的安装包，或按[构建指南](docs/development.md#构建安装包)生成。
 
-| 系统 | 0.5.0 安装文件 |
+| 系统 | 最近构建的安装文件 |
 | --- | --- |
-| macOS，M 系列芯片 | `Imageboard-0.4.1-mac-arm64.dmg` |
+| macOS，M 系列芯片 | `Imageboard-0.6.0-mac-arm64.dmg` |
 | macOS，Intel 芯片 | `Imageboard-0.4.1-mac-x64.dmg` |
 | Windows，x64 | `Imageboard-0.4.1-win-x64.exe` |
+
+本次 0.6.0 构建覆盖 macOS Apple Silicon；表中的 Intel 和 Windows 旧安装包不包含普通聊天生图，需另行构建对应平台新版。
 
 首次运行 Imageboard 完成 MCP 注册，然后重新打开 Codex，在左侧「更多」中找到 Imageboard 并固定一次。以后直接打开 Codex、点击侧栏图标即可使用。安装包内置运行环境，普通用户不需要 Node.js、npm 或独立 Codex CLI。
 
@@ -79,7 +82,7 @@ npm.cmd start
 npm run codex
 ```
 
-Windows 使用 `npm.cmd run codex`。该命令构建 UI 并写入用户的 MCP 配置，不会启动 Codex。注册后按安装指南重新打开 Codex、固定入口；必须保留当前仓库和 Node 可执行文件的路径。
+Windows 使用 `npm.cmd run codex`。该命令构建 UI、写入用户 MCP 配置并安装配套 Imageboard Skill，不会启动 Codex。注册后重新打开 Codex，可在普通聊天中说“用 Imageboard 生成一张图片”，也可按安装指南固定工作室入口；必须保留当前仓库和 Node 可执行文件的路径。
 
 **源码 MCP 模式默认使用系统 Imageboard 数据目录，而浏览器模式默认使用 `.data/`。**自定义目录、热更新和调试方法见[开发指南](docs/development.md)。
 
@@ -98,7 +101,7 @@ Windows 使用 `npm.cmd run codex`。该命令构建 UI 并写入用户的 MCP �
 - 支持 OpenAI 兼容 `GET /models`、`POST /images/generations`、`POST /images/edits`，图片须返回 `b64_json`。模型列表不保证所选模型具备生图能力或支持全部图片参数。
 - 配置保存在当前数据目录的 `channels.json`（含 API Key，文件权限 `0600`），不写回 Codex，不进入作品记录、页面存储或响应。备份该文件时按凭据文件保管。
 
-此功能尚未构建进现有 0.4.1 安装包；使用源码版或另行构建后体验。
+此功能已包含在 0.6.0 macOS Apple Silicon 安装包中；0.4.1 旧安装包不包含。
 
 ### 扫描渠道
 
@@ -161,6 +164,8 @@ MCP 发现和读取页面资源不会调用图片服务或生图 API。多个窗
 当前一次运行一个任务。多方案逐张请求并保存，以兼容忽略 `n > 1` 的网关；后续失败或取消时保留已完成方案。服务重启后，中断任务标记失败，不自动重复付费请求。只有根路径返回 404/405 时尝试 `/v1/` 前缀，不因超时或 5xx 自动重发生图请求。
 
 ## 开发状态与验证
+
+2026-10-26，0.6.0 macOS Apple Silicon 通过 65 项自动测试、成品应用自检、签名验证和 DMG 完整性检查。已完成本机覆盖安装，核对作品与渠道数据保留，并通过安装版 MCP 验证聊天工具发现和服务按需启动。自动生图测试使用模拟网关，未调用真实付费图片接口。
 
 截至 2026-10-11，0.4.1 已通过 43 项自动测试、macOS arm64 安装包自检和 Rosetta 下的 macOS x64 安装包自检。两套 DMG 完整性与应用签名检查通过；Windows x64 已完成构建、压缩包完整性及静态检查，尚需 Windows 实机验收。
 

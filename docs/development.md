@@ -84,7 +84,7 @@ npm.cmd run dev
 npm run codex
 ```
 
-Windows 使用 `npm.cmd run codex`。命令会构建 `web/mcp-client.js`，再把当前 Node、仓库路径及作品目录写入用户配置中的 `[mcp_servers.imageboard]`。
+Windows 使用 `npm.cmd run codex`。命令会构建 `web/mcp-client.js`，再把当前 Node、仓库路径及作品目录写入用户配置中的 `[mcp_servers.imageboard]`，并将配套 Skill 安装到所选 Codex 配置目录下的 `skills/imageboard`。用户修改过的同名 Skill 会保留并提示合并。
 
 如果要使用仓库 `.data/`，先按上一节设置 `IMAGEBOARD_DATA_DIR`，再执行注册；该目录会以绝对路径写入 MCP 配置。移动仓库、切换 Node 安装位置或切回桌面安装版后，都应重新注册。
 
@@ -116,12 +116,14 @@ node scripts/codex.mjs --uninstall
 | --- | --- |
 | `web/` | 工作室、参考图编辑器、主题、MCP Apps 浏览器桥接 |
 | `server/mcp.mjs` | 原生全局入口、工具发现和 UI 资源 |
+| `server/mcp-chat.mjs`、`server/chat-generations.mjs` | 普通聊天工具、任务去重、异步查询、图片预览和原图路径 |
 | `server/ui-policy.mjs` | 本地图片资源策略，禁止页面直接联网 |
 | `server/mcp-bridge.mjs` | API 路由白名单及 256 KiB 图片分片传输 |
 | `server/runtime.mjs`、`server/native-service.mjs` | 服务复用、启动锁、令牌、空闲退出 |
 | `server/index.mjs`、`server/jobs.mjs`、`server/assets.mjs` | HTTP API、任务与历史、图片处理和持久化 |
 | `server/config.mjs`、`server/channels.mjs`、`server/provider.mjs`、`server/network.mjs` | 扫描配置、自定义渠道、模型列表及协议、系统证书信任和错误分类 |
 | `desktop/` | 安装注册、源码数据导入辅助、打包后自检 |
+| `skills/imageboard/` | 聊天生图、任务恢复与图片展示的 Skill；安装时保留用户定制 |
 | `scripts/` | UI 构建、源码注册、桌面打包、受限页面验证 |
 | `inject/` | 旧版 CDP 注入实现，保留作历史参考；0.3.x 安装包不使用 |
 | `test/` | 模拟网关、图片、任务、MCP、配置和 TLS 回归测试 |

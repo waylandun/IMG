@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createBridge } from './mcp-bridge.mjs';
 import { mcpDocument } from './embed.mjs';
 import { UI_CSP } from './ui-policy.mjs';
+import { chatTools, createChatTools } from './mcp-chat.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
@@ -16,6 +17,7 @@ const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.
 const icons = [{ src: icon, mimeType: 'image/svg+xml' }];
 const appOnly = { ui: { resourceUri, visibility: ['app'] }, 'openai/widgetAccessible': true };
 const tools = [
+  ...chatTools,
   { name: 'open_imageboard', title: 'Imageboard', description: '打开 Imageboard 生图工作室，使用用户自己的 Codex API 配置。', icons,
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
@@ -28,6 +30,7 @@ const tools = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }, _meta: appOnly },
 ];
 const bridge = createBridge();
+const chat = createChatTools({ bridge });
 const server = new Server({ name: 'imageboard', title: 'Imageboard', version, icons }, { capabilities: { tools: {}, resources: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [{ uri: resourceUri, name: 'Imageboard', mimeType }] }));
@@ -37,6 +40,8 @@ server.setRequestHandler(ReadResourceRequestSchema, async ({ params }) => {
 });
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
   try {
+    if (params.name === 'generate_image') return await chat.generate(params.arguments || {});
+    if (params.name === 'get_generation') return await chat.get(params.arguments || {});
     let result;
     if (params.name === 'open_imageboard') result = { app: 'Imageboard', ready: true };
     else if (params.name === 'imageboard_request') result = await bridge.request(params.arguments || {});

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import sharp from 'sharp';
@@ -7,6 +7,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { createBridge } from '../server/mcp-bridge.mjs';
+import { createChatTools } from '../server/mcp-chat.mjs';
 
 const directory = await mkdtemp(path.join(os.tmpdir(), 'imageboard-packaged-'));
 let server, client;
@@ -37,6 +39,13 @@ try {
   }
   const conversation = result.conversations.get(conversationId);
   if (conversation.turns[0].job || conversation.turns[0].assistant !== '先聊聊用途。' || conversation.turns[1].job?.status !== 'completed') throw new Error('Packaged conversation routing failed');
+  const chat = createChatTools({ bridge: createBridge({ runtimeLoader: async () => ({ origin, token: 'self-test' }) }) });
+  const chatInput = { requestId: randomUUID(), prompt: 'test ordinary chat image' };
+  const accepted = await chat.generate(chatInput);
+  const chatResult = await chat.get({ jobId: chatInput.requestId });
+  if (accepted.isError || chatResult.structuredContent.status !== 'completed' || !chatResult.content.some(item => item.type === 'image')) throw new Error('Packaged chat generation failed');
+  if ((await sharp(await readFile(chatResult.structuredContent.images[0].path)).metadata()).width !== 64) throw new Error('Packaged chat original missing');
+  await readFile(new URL('../skills/imageboard/SKILL.md', import.meta.url));
   const html = await (await fetch(`${origin}/api/embed-document`)).text();
   if (!html.includes('function createEditor')) throw new Error('Packaged UI missing editor');
   client = new Client({ name: 'imageboard-packaged-test', version: '1' });
@@ -44,11 +53,12 @@ try {
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [entry], env: { ...process.env, IMAGEBOARD_DATA_DIR: directory }, stderr: 'pipe' }));
   const tools = await client.listTools();
   const open = tools.tools.find(tool => tool.name === 'open_imageboard');
+  for (const name of ['generate_image', 'get_generation']) if (!tools.tools.some(tool => tool.name === name)) throw new Error('Packaged chat tool missing');
   if (open?._meta?.['openai/ui']?.entrypoints?.[0]?.type !== 'global') throw new Error('Packaged native entry missing');
   const resource = await client.readResource({ uri: open._meta.ui.resourceUri });
   if (!resource.contents[0].text.includes('__IMAGEBOARD_MCP__') || !resource.contents[0].text.includes('function renderConversation')) throw new Error('Packaged MCP conversation client missing');
   const health = await (await fetch(`${origin}/api/health`)).json();
-  const report = { ok: true, version: health.version, platform: process.platform, arch: process.arch, node: process.versions.node, sharp: sharp.versions.sharp, outputs: finished.outputs.length, conversationTurns: conversation.turns.length, conversationGeneration: true, nativeMcp: true };
+  const report = { ok: true, version: health.version, platform: process.platform, arch: process.arch, node: process.versions.node, sharp: sharp.versions.sharp, outputs: finished.outputs.length, conversationTurns: conversation.turns.length, conversationGeneration: true, chatGeneration: true, nativeMcp: true };
   if (process.argv[2]) await writeFile(process.argv[2], JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } catch (error) { console.error(error.message); process.exitCode = 1; }

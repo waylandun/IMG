@@ -85,7 +85,7 @@ export class Jobs extends EventEmitter {
   async create(input, internal = {}) {
     if (internal.jobId && this.items.has(internal.jobId)) {
       const existing = this.items.get(internal.jobId);
-      if (existing.conversationId !== internal.conversationId || existing.turnId !== internal.turnId) throw new ProviderError('图片任务标识已使用。', 409);
+      if (existing.conversationId !== internal.conversationId || existing.turnId !== internal.turnId || existing.source !== internal.source || existing.requestHash !== internal.requestHash) throw new ProviderError('图片任务标识已使用。', 409);
       return existing;
     }
     internal.signal?.throwIfAborted();
@@ -159,9 +159,12 @@ export class Jobs extends EventEmitter {
         model: config.promptConfig.model, imageModel: config.imageConfig.imageModel,
         channelId: loaded.public?.defaultChannelId, channelName: loaded.public?.channelName,
         ...(internal.conversationId ? { conversationId: internal.conversationId, turnId: internal.turnId } : {}),
+        ...(internal.source ? { source: internal.source, requestHash: internal.requestHash } : {}),
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
-      this.items.set(job.id, job); await this.persist();
+      this.items.set(job.id, job);
+      try { await this.persist(); }
+      catch (error) { this.items.delete(job.id); throw error; }
       const controller = new AbortController(); this.controllers.set(job.id, controller);
       const cancel = () => controller.abort(internal.signal.reason);
       if (internal.signal?.aborted) cancel(); else internal.signal?.addEventListener('abort', cancel, { once: true });

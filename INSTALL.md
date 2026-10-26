@@ -1,8 +1,10 @@
 # Imageboard 安装、升级与卸载
 
-适用版本：**0.5.0**。日常使用流程是：**打开 Codex → 点击左侧 Imageboard → 开始创作**。Imageboard 安装程序只负责首次注册；Codex 会启动其内置 MCP 运行环境，图片服务按需加载。
+适用版本：**0.6.0**。日常使用流程是：**打开 Codex → 在聊天中要求 Imageboard 生图，或打开左侧工作室 → 开始创作**。Imageboard 安装程序负责安装、升级后的注册；Codex 会启动其内置 MCP 运行环境，图片服务按需加载。
 
-当前源码已新增[自定义生图渠道](README.md#自定义生图渠道当前源码)，现有 0.4.1 安装包尚未包含。源码版可配置独立图片网关；未配置 Codex 文本模型时仍可直接生图，提示词优化不可用。
+0.6.0 包含[自定义生图渠道](README.md#自定义生图渠道当前源码)，可配置独立图片网关；未配置 Codex 文本模型时仍可直接生图，提示词优化不可用。0.4.1 旧安装包不包含此功能。
+
+0.6.0 支持[Codex 普通聊天生图](docs/chat-generation.md)。运行新版安装程序后，重开 Codex 即可说“用 Imageboard 生成一张图片”。配套 Skill 随安装注册；参考图和连续编辑仍通过工作室使用。日常使用无需执行终端命令。
 
 开发者请先阅读 [README](README.md) 和[开发指南](docs/development.md)。
 
@@ -21,9 +23,11 @@
 
 | 设备 | 文件 |
 | --- | --- |
-| macOS Apple Silicon（M 系列） | `Imageboard-0.4.1-mac-arm64.dmg` |
+| macOS Apple Silicon（M 系列） | `Imageboard-0.6.0-mac-arm64.dmg` |
 | macOS Intel | `Imageboard-0.4.1-mac-x64.dmg` |
 | Windows x64 | `Imageboard-0.4.1-win-x64.exe` |
+
+本次 0.6.0 仅构建并验证 macOS Apple Silicon。表中 Intel 和 Windows 文件为旧版，不包含普通聊天生图；对应新版可按构建指南生成。
 
 macOS 可在「关于本机」查看芯片类型。Windows 可在「设置 → 系统 → 系统信息」查看系统类型。目前不提供原生 Windows ARM64 安装包。
 
@@ -80,6 +84,7 @@ experimental_bearer_token = "替换为你已有的 API 凭据"
 ## 确认安装成功
 
 - Codex 的 MCP 设置中有启用的 `imageboard` 条目，命令路径指向当前安装目录。
+- 0.6.0 可发现 `generate_image`、`get_generation` 工具，配套 Imageboard Skill 已注册。
 - 左侧「更多」里可以找到 Imageboard，固定后重新打开 Codex仍保留入口。
 - 打开工作室可以读取配置；已有用户能看到历史记录和图片。
 - 不需要系统托盘常驻，也不需要先打开 Imageboard 再打开 Codex。
@@ -118,7 +123,7 @@ experimental_bearer_token = "替换为你已有的 API 凭据"
 
 `native-service.log` 位于作品目录。原生图片服务使用随机回环端口和临时令牌，多个 MCP 客户端复用一个服务；关闭页面不会主动取消运行中的生成，空闲五分钟且没有任务后自动退出。
 
-安装程序只维护用户 `config.toml` 内带 Imageboard 标记的 MCP 配置块，并将修改前配置备份到同目录 `imageboard-backups/`。配置备份可能包含凭据，请仅在本机妥善保存。
+安装程序维护用户 `config.toml` 内带 Imageboard 标记的 MCP 配置块，并将修改前配置备份到同目录 `imageboard-backups/`。另外维护同目录下 `skills/imageboard` 的配套 Skill，保留自定义内容，不修改默认生图工具规则。配置备份可能包含凭据，请仅在本机妥善保存。
 
 开发版可在注册前设置 `IMAGEBOARD_DATA_DIR` 指向自己的作品目录，见[自定义数据目录](docs/development.md#数据目录与环境变量)。安装程序不会自动把仓库 `.data/` 合并到已有作品库。
 

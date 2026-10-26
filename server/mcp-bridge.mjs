@@ -6,6 +6,8 @@ const MAX_IMAGE = 20 * 1024 * 1024;
 const UUID = '[a-f0-9-]{36}';
 export function allowedRequest(method, route) {
   if (typeof route !== 'string') return false;
+  if (method === 'POST' && route === '/api/chat/generations') return true;
+  if (method === 'GET' && new RegExp(`^/api/chat/generations/${UUID}(?:\\?waitSeconds=(?:[0-9]|1[0-9]|20))?$`).test(route)) return true;
   if (method === 'GET') return new RegExp(`^/api/(config|conversations(?:/${UUID})?|jobs(?:/${UUID})?|assets/${UUID}(?:\\?(?:meta|download)=1)?|images/${UUID}\\.png(?:\\?download=1)?)$`).test(route);
   if (method === 'POST') return new RegExp(`^/api/(conversations/${UUID}/(?:messages|cancel)|jobs(?:/${UUID}/cancel)?|channels(?:/models)?)$`).test(route);
   if (method === 'PATCH') return new RegExp(`^/api/(jobs/${UUID}|channels/(?:codex|${UUID})|config/default-channel)$`).test(route);

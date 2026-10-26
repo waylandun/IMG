@@ -23,11 +23,11 @@ app.whenReady().then(async () => {
   const { dataDirectory } = await import('../server/runtime.mjs');
   const directory = dataDirectory();
   const remove = process.argv.includes('--uninstall');
-  await installNative({ executable: process.execPath, root: app.getAppPath(), directory }, { remove });
+  const installed = await installNative({ executable: process.execPath, root: app.getAppPath(), directory }, { remove });
   if (!process.argv.includes('--silent')) {
     const result = await dialog.showMessageBox({
       type: 'info', title: 'Imageboard', message: remove ? 'Imageboard 侧栏入口已移除' : 'Imageboard 已安装到 Codex',
-      detail: remove ? '重新打开 Codex 后生效。已有作品保留。' : '重新打开 Codex，在左侧「更多」中找到 Imageboard 并固定。以后直接点击左侧图标即可使用。\n\n无需先运行 Imageboard，也无需系统托盘或登录自启动。请保留本应用，Codex 会使用其中的运行环境。',
+      detail: (remove ? '重新打开 Codex 后生效。已有作品及修改过的 Skill 保留。' : '重新打开 Codex，可直接说“用 Imageboard 生成一张图片”。也可在左侧「更多」中固定工作室。\n\n请保留本应用，Codex 会使用其中的运行环境。') + (installed.skill.warning ? `\n\n${installed.skill.warning}` : ''),
       buttons: ['完成', '打开作品目录'], defaultId: 0,
     });
     if (result.response === 1) await shell.openPath(directory);

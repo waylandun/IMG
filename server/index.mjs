@@ -10,6 +10,7 @@ import { embeddedDocument } from './embed.mjs';
 import { ASSET_LIMIT } from './assets.mjs';
 import { Channels } from './channels.mjs';
 import { Conversations } from './conversations.mjs';
+import { ChatGenerations } from './chat-generations.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
@@ -42,6 +43,7 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
   await jobs.init();
   const conversations = new Conversations({ directory, jobs, configLoader: () => channels.resolve(), respond });
   await conversations.init();
+  const generations = new ChatGenerations({ jobs, conversations });
   const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -97,6 +99,20 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
       const channelMatch = url.pathname.match(/^\/api\/channels\/(codex|[a-f0-9-]{36})$/);
       if (channelMatch && req.method === 'PATCH') { json(res, 200, await channels.update(channelMatch[1], await body(req))); return; }
       if (channelMatch && req.method === 'DELETE') { json(res, 200, await channels.remove(channelMatch[1])); return; }
+      if (req.method === 'POST' && url.pathname === '/api/chat/generations') {
+        json(res, 202, await generations.create(await body(req))); return;
+      }
+      const generationMatch = url.pathname.match(/^\/api\/chat\/generations\/([a-f0-9-]{36})$/);
+      if (req.method === 'GET' && generationMatch) {
+        const controller = new AbortController();
+        const disconnected = () => controller.abort();
+        res.once('close', disconnected);
+        try {
+          const result = await generations.get(generationMatch[1], { waitSeconds: Number(url.searchParams.get('waitSeconds') || 0), signal: controller.signal });
+          if (!res.destroyed) json(res, 200, result);
+        } finally { res.off('close', disconnected); }
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/conversations') { json(res, 200, conversations.list()); return; }
       const conversationMatch = url.pathname.match(/^\/api\/conversations\/([a-f0-9-]{36})(?:\/(messages|cancel))?$/);
       if (conversationMatch) {
@@ -166,7 +182,7 @@ export async function createServer({ directory = process.env.IMAGEBOARD_DATA_DIR
     }
   });
   server.on('close', () => { conversations.close(); jobs.close(); });
-  return { server, jobs, conversations };
+  return { server, jobs, conversations, generations };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

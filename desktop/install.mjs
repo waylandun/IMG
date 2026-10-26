@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { parse } from 'smol-toml';
+import { installChatSkill } from './skill.mjs';
 
 const BEGIN = '# BEGIN Imageboard native MCP (managed)', END = '# END Imageboard native MCP';
 const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
@@ -57,7 +58,7 @@ export async function installNative(settings, { codexHome = process.env.CODEX_HO
   const file = path.join(codexHome, 'config.toml');
   const original = await readFile(file, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; });
   const updated = updateConfiguration(original, settings, remove);
-  if (updated === original) return { file, changed: false };
+  if (updated === original) return { file, changed: false, skill: await installChatSkill(codexHome, { remove }) };
   const backupDirectory = path.join(codexHome, 'imageboard-backups');
   await mkdir(backupDirectory, { recursive: true, mode: 0o700 });
   if (original) await writeFile(path.join(backupDirectory, `config-${Date.now()}-${randomUUID()}.toml`), original, { mode: 0o600 });
@@ -65,5 +66,5 @@ export async function installNative(settings, { codexHome = process.env.CODEX_HO
   if (latest !== original) throw new Error('Codex 配置正在变化，请重新运行安装。');
   const temporary = `${file}.imageboard-${randomUUID()}.tmp`;
   await writeFile(temporary, updated, { mode: 0o600 }); await rename(temporary, file);
-  return { file, changed: true };
+  return { file, changed: true, skill: await installChatSkill(codexHome, { remove }) };
 }
