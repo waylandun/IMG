@@ -1,10 +1,10 @@
 # Imageboard 安装、升级与卸载
 
-适用版本：**0.6.0**。日常使用流程是：**打开 Codex → 在聊天中要求 Imageboard 生图，或打开左侧工作室 → 开始创作**。Imageboard 安装程序负责安装、升级后的注册；Codex 会启动其内置 MCP 运行环境，图片服务按需加载。
+适用版本：**0.6.1**。日常使用流程是：**打开 Codex → 在聊天中要求 Imageboard 生图，或打开左侧工作室 → 开始创作**。Imageboard 安装程序负责安装、升级后的注册；Codex 会启动其内置 MCP 运行环境，图片服务按需加载。
 
 0.6.0 包含[自定义生图渠道](README.md#自定义生图渠道当前源码)，可配置独立图片网关；未配置 Codex 文本模型时仍可直接生图，提示词优化不可用。0.4.1 旧安装包不包含此功能。
 
-0.6.0 支持[Codex 普通聊天生图](docs/chat-generation.md)。运行新版安装程序后，重开 Codex 即可说“用 Imageboard 生成一张图片”。配套 Skill 随安装注册；参考图和连续编辑仍通过工作室使用。日常使用无需执行终端命令。
+0.6.1 支持[Codex 普通聊天生图](docs/chat-generation.md)。运行新版安装程序后，重开 Codex 即可说“用 Imageboard 生成一张图片”。配套 Skill 随安装注册；参考图和连续编辑仍通过工作室使用。日常使用无需执行终端命令。
 
 开发者请先阅读 [README](README.md) 和[开发指南](docs/development.md)。
 
@@ -23,11 +23,11 @@
 
 | 设备 | 文件 |
 | --- | --- |
-| macOS Apple Silicon（M 系列） | `Imageboard-0.6.0-mac-arm64.dmg` |
+| macOS Apple Silicon（M 系列） | `Imageboard-0.6.1-mac-arm64.dmg` |
 | macOS Intel | `Imageboard-0.4.1-mac-x64.dmg` |
 | Windows x64 | `Imageboard-0.4.1-win-x64.exe` |
 
-本次 0.6.0 仅构建并验证 macOS Apple Silicon。表中 Intel 和 Windows 文件为旧版，不包含普通聊天生图；对应新版可按构建指南生成。
+本次 0.6.1 仅构建并验证 macOS Apple Silicon。表中 Intel 和 Windows 文件为旧版，不包含普通聊天生图；对应新版可按构建指南生成。
 
 macOS 可在「关于本机」查看芯片类型。Windows 可在「设置 → 系统 → 系统信息」查看系统类型。目前不提供原生 Windows ARM64 安装包。
 

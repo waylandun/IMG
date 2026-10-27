@@ -75,6 +75,10 @@ test('stdio chat tools generate through the image API once, display a bounded pr
   const preview = await sharp(Buffer.from(image.data, 'base64')).metadata();
   assert.equal(preview.width, 1024); assert.equal(preview.height, 576);
   const asset = finished.structuredContent.images[0];
+  assert.equal(finished.structuredContent.display.terminal, true);
+  assert.equal(finished.structuredContent.display.ready, true);
+  assert.equal(finished.structuredContent.display.markdown, `![Imageboard 生成图片](<${asset.path.replace(/\\/g, '/')}>)`);
+  assert.ok(finished.content[0].text.includes(finished.structuredContent.display.markdown));
   assert.ok(path.isAbsolute(asset.path)); assert.equal((await sharp(await readFile(asset.path)).metadata()).width, 1280);
   const saved = JSON.parse(await readFile(path.join(app.directory, 'jobs.json')));
   assert.equal(saved.length, 1); assert.equal(saved[0].id, input.requestId); assert.equal(saved[0].source, 'codex-chat');
@@ -84,6 +88,7 @@ test('stdio chat tools generate through the image API once, display a bounded pr
   assert.equal(library[0].id, input.requestId);
   const metadata = await second.callTool({ name: 'get_generation', arguments: { jobId: input.requestId, includeImage: false } });
   assert.equal(metadata.content.length, 1); assert.equal(metadata.structuredContent.images[0].assetId, asset.assetId);
+  assert.equal(metadata.structuredContent.display.markdown, finished.structuredContent.display.markdown);
   assert.doesNotMatch(JSON.stringify([finished, saved, metadata]), /private-test-secret|Authorization/);
   assert.equal((await first.callTool({ name: 'generate_image', arguments: { ...input, format: 'png', background: 'auto' } })).structuredContent.jobId, input.requestId);
   assert.equal(requests, 1);
@@ -151,6 +156,8 @@ test('failed generation keeps its error and cannot be restarted by replaying the
   const input = draft(); await app.chat.generate(input);
   const result = await app.chat.get({ jobId: input.requestId });
   assert.equal(result.structuredContent.status, 'failed'); assert.match(result.structuredContent.error, /渠道不可用/);
+  assert.equal(result.structuredContent.display.terminal, true); assert.equal(result.structuredContent.display.ready, false);
+  assert.equal(result.structuredContent.display.markdown, '');
   assert.equal((await app.chat.generate(input)).structuredContent.status, 'failed'); assert.equal(attempts, 1);
 });
 
@@ -167,6 +174,8 @@ test('busy service rejects new work while long polling is bounded and disconnect
   const beginning = Date.now();
   const waiting = await app.chat.get({ jobId: input.requestId, waitSeconds: 1 });
   assert.equal(waiting.structuredContent.status, 'generating'); assert.ok(Date.now() - beginning < 3000);
+  assert.equal(waiting.structuredContent.display.terminal, false); assert.equal(waiting.structuredContent.display.ready, false);
+  assert.equal(waiting.structuredContent.display.markdown, '');
   const baseline = app.jobs.listenerCount('change'), controller = new AbortController();
   const disconnected = fetch(`${app.origin}/api/chat/generations/${input.requestId}?waitSeconds=20`, { headers: { Authorization: `Bearer ${app.token}` }, signal: controller.signal }).catch(error => error);
   await until(() => app.jobs.listenerCount('change') > baseline);
@@ -198,6 +207,7 @@ test('preview read failure preserves the completed result and original path', as
   } } });
   const result = await chat.get({ jobId: input.requestId });
   assert.equal(result.structuredContent.status, 'completed'); assert.ok(result.structuredContent.previewError);
+  assert.ok(result.content[0].text.includes(result.structuredContent.display.markdown));
   assert.ok((await readFile(result.structuredContent.images[0].path)).length > 0);
   assert.equal((await app.chat.get({ jobId: input.requestId })).content[1].type, 'image');
 });

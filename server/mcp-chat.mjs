@@ -2,11 +2,12 @@ import sharp from 'sharp';
 import { generationInput, UUID } from './chat-generations.mjs';
 import { SIZES, QUALITIES } from './jobs.mjs';
 import { createBridge } from './mcp-bridge.mjs';
+import { presentGeneration, generationText } from './chat-presentation.mjs';
 
 export const chatTools = [
   {
     name: 'generate_image', title: 'Imageboard 聊天生图',
-    description: '用户指定 Imageboard 生图或将其设为默认时，在当前聊天中创建一张图片，无需打开工作室。仅讨论或索要提示词时不要调用。返回任务 ID，随后使用 get_generation 等待并展示图片。同一次请求重试必须沿用 requestId 和参数，避免重复生成。',
+    description: '用户指定 Imageboard 生图或将其设为默认时创建一张图片，并在支持的宿主显示进度卡片。仅讨论或索要提示词时不要调用。返回后继续 get_generation 直到终态；最终回复必须直接插入返回的 display.markdown 图片。不能只说已保存到作品库。同一次请求重试沿用 requestId 和参数。',
     inputSchema: { type: 'object', properties: {
       requestId: { type: 'string', pattern: UUID.source, description: '本次创作的小写 UUID，也是 jobId。重试沿用原值；只有新的创作使用新 UUID。' },
       prompt: { type: 'string', minLength: 1, maxLength: 8000, description: '结合当前聊天要求整理的完整生图提示词，直接发送给生图模型。' },
@@ -19,7 +20,7 @@ export const chatTools = [
   },
   {
     name: 'get_generation', title: '获取 Imageboard 生图结果',
-    description: '查询聊天生图任务，可等待最多 20 秒。完成后返回图片预览、原图绝对路径和作品 ID；用原图路径在当前聊天展示图片。查询不触发生图。创建响应丢失时，使用原 requestId 作为 jobId 找回任务。',
+    description: '查询聊天生图任务，可等待最多 20 秒，不触发生图。display.terminal=false 时继续查询同一任务；完成后必须把 display.markdown 原样插入最终回复，不加代码围栏，不能只回复已保存。工具内的图片和 image() 输出不是最终聊天消息。创建响应丢失时可用原 requestId 查询。',
     inputSchema: { type: 'object', properties: {
       jobId: { type: 'string', pattern: UUID.source },
       waitSeconds: { type: 'integer', minimum: 0, maximum: 20, default: 20 },
@@ -29,7 +30,10 @@ export const chatTools = [
   },
 ];
 
-const response = (data, extra = []) => ({ content: [{ type: 'text', text: JSON.stringify(data) }, ...extra], structuredContent: data });
+const response = (data, extra = []) => {
+  const presented = data.jobId && data.status ? presentGeneration(data) : data;
+  return { content: [{ type: 'text', text: presented.display ? generationText(presented) : JSON.stringify(presented) }, ...extra], structuredContent: presented };
+};
 const failure = (message, details = {}) => ({ ...response({ error: message, ...details }), isError: true });
 
 export function createChatTools({ bridge = createBridge() } = {}) {

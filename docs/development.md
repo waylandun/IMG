@@ -116,7 +116,8 @@ node scripts/codex.mjs --uninstall
 | --- | --- |
 | `web/` | 工作室、参考图编辑器、主题、MCP Apps 浏览器桥接 |
 | `server/mcp.mjs` | 原生全局入口、工具发现和 UI 资源 |
-| `server/mcp-chat.mjs`、`server/chat-generations.mjs` | 普通聊天工具、任务去重、异步查询、图片预览和原图路径 |
+| `server/mcp-chat.mjs`、`server/chat-generations.mjs`、`server/chat-presentation.mjs` | 普通聊天工具、任务去重、异步查询、图片 Markdown 与预览 |
+| `web/generation-card.*` | 工具关联的创作进度卡片、原图预览、下载和只读状态轮询 |
 | `server/ui-policy.mjs` | 本地图片资源策略，禁止页面直接联网 |
 | `server/mcp-bridge.mjs` | API 路由白名单及 256 KiB 图片分片传输 |
 | `server/runtime.mjs`、`server/native-service.mjs` | 服务复用、启动锁、令牌、空闲退出 |

@@ -44,6 +44,7 @@ try {
   const accepted = await chat.generate(chatInput);
   const chatResult = await chat.get({ jobId: chatInput.requestId });
   if (accepted.isError || chatResult.structuredContent.status !== 'completed' || !chatResult.content.some(item => item.type === 'image')) throw new Error('Packaged chat generation failed');
+  if (!chatResult.structuredContent.display?.ready || !chatResult.content[0].text.includes(chatResult.structuredContent.display.markdown)) throw new Error('Packaged chat image Markdown missing');
   if ((await sharp(await readFile(chatResult.structuredContent.images[0].path)).metadata()).width !== 64) throw new Error('Packaged chat original missing');
   await readFile(new URL('../skills/imageboard/SKILL.md', import.meta.url));
   const html = await (await fetch(`${origin}/api/embed-document`)).text();
@@ -54,11 +55,14 @@ try {
   const tools = await client.listTools();
   const open = tools.tools.find(tool => tool.name === 'open_imageboard');
   for (const name of ['generate_image', 'get_generation']) if (!tools.tools.some(tool => tool.name === name)) throw new Error('Packaged chat tool missing');
+  const create = tools.tools.find(tool => tool.name === 'generate_image');
+  const card = await client.readResource({ uri: create._meta.ui.resourceUri });
+  if (!card.contents[0].text.includes('generation-card') || !card.contents[0].text.includes('imageboard-tool-result')) throw new Error('Packaged progress card missing');
   if (open?._meta?.['openai/ui']?.entrypoints?.[0]?.type !== 'global') throw new Error('Packaged native entry missing');
   const resource = await client.readResource({ uri: open._meta.ui.resourceUri });
   if (!resource.contents[0].text.includes('__IMAGEBOARD_MCP__') || !resource.contents[0].text.includes('function renderConversation')) throw new Error('Packaged MCP conversation client missing');
   const health = await (await fetch(`${origin}/api/health`)).json();
-  const report = { ok: true, version: health.version, platform: process.platform, arch: process.arch, node: process.versions.node, sharp: sharp.versions.sharp, outputs: finished.outputs.length, conversationTurns: conversation.turns.length, conversationGeneration: true, chatGeneration: true, nativeMcp: true };
+  const report = { ok: true, version: health.version, platform: process.platform, arch: process.arch, node: process.versions.node, sharp: sharp.versions.sharp, outputs: finished.outputs.length, conversationTurns: conversation.turns.length, conversationGeneration: true, chatGeneration: true, chatFinalImageMarkdown: true, chatProgressCard: true, nativeMcp: true };
   if (process.argv[2]) await writeFile(process.argv[2], JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } catch (error) { console.error(error.message); process.exitCode = 1; }

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Imageboard 图片创作</title>
+  <link rel="stylesheet" href="/generation-card.css">
+</head>
+<body>
+  <main class="generation-card" aria-label="Imageboard 图片创作">
+    <header class="status-row" role="status" aria-live="polite">
+      <span id="status-icon" class="status-icon" aria-hidden="true">✦</span>
+      <strong id="status-label">正在准备图片创作</strong>
+      <span id="elapsed" class="elapsed"></span>
+    </header>
+    <section id="stage" class="stage pending" aria-busy="true">
+      <div id="placeholder" class="placeholder">
+        <span class="orbit" aria-hidden="true">✦</span>
+        <strong id="placeholder-title">让想象慢慢显影</strong>
+        <span id="placeholder-detail">正在等待创作任务</span>
+      </div>
+      <figure id="result" hidden>
+        <button id="view-image" class="image-button" type="button" aria-label="查看原图">
+          <img id="result-image" alt="Imageboard 生成图片">
+        </button>
+      </figure>
+    </section>
+    <footer class="actions">
+      <span id="note" role="status" aria-live="polite"></span>
+      <button id="retry" type="button" hidden>重新读取</button>
+      <button id="download" type="button" hidden>下载原图</button>
+    </footer>
+    <dialog id="viewer" aria-label="原图预览">
+      <header><strong>原图预览</strong><button id="close-viewer" type="button" aria-label="关闭原图预览">关闭</button></header>
+      <div class="original-scroll"><img id="original-image" alt="Imageboard 原图"></div>
+    </dialog>
+  </main>
+  <script type="module" src="/generation-card.js"></script>
+</body>
+</html>

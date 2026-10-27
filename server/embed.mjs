@@ -26,3 +26,10 @@ export async function mcpDocument(root) {
   return html.replace('<link rel="stylesheet" href="/style.css">', () => `<style>${css.replace(/<\/style/gi, '<\\/style')}</style>`)
     .replace('<script type="module" src="/app.js"></script>', () => `<script type="module">${js.replace(/<\/script/gi, '<\\/script')}</script>`);
 }
+
+export async function generationDocument(root) {
+  const [html, css, bridge, card] = await Promise.all(['web/generation-card.html', 'web/generation-card.css', 'web/mcp-client.js', 'web/generation-card.js'].map(file => readFile(path.join(root, file), 'utf8')));
+  const js = `window.__IMAGEBOARD_VIEW__='generation';\n${bridge}\n${card}`;
+  return html.replace('<link rel="stylesheet" href="/generation-card.css">', () => `<style>${css.replace(/<\/style/gi, '<\\/style')}</style>`)
+    .replace('<script type="module" src="/generation-card.js"></script>', () => `<script type="module">${js.replace(/<\/script/gi, '<\\/script')}</script>`);
+}

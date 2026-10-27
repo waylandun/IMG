@@ -1,17 +1,27 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 import { version } from '../package.json';
 
-const app = new App({ name: 'Imageboard', version }, {}, { autoResize: false });
+const app = new App({ name: 'Imageboard', version }, {}, { autoResize: window.__IMAGEBOARD_VIEW__ === 'generation' });
 function hostTheme(theme) {
   if (theme === 'light' || theme === 'dark') window.dispatchEvent(new CustomEvent('imageboard-host-theme', { detail: { theme } }));
 }
-app.onhostcontextchanged = context => hostTheme(context.theme);
-const ready = app.connect().then(() => hostTheme(app.getHostContext()?.theme));
+function hostContext(context = {}) {
+  hostTheme(context.theme);
+  window.dispatchEvent(new CustomEvent('imageboard-host-context', { detail: context }));
+}
+app.onhostcontextchanged = hostContext;
+app.ontoolinput = params => window.dispatchEvent(new CustomEvent('imageboard-tool-input', { detail: params.arguments }));
+app.ontoolresult = result => window.dispatchEvent(new CustomEvent('imageboard-tool-result', { detail: result }));
+const ready = app.connect().then(() => hostContext(app.getHostContext()));
 const chunkSize = 256 * 1024;
 async function call(name, args) {
   await ready;
   const result = await app.callServerTool({ name, arguments: args });
-  if (result.isError) throw new Error(result.content?.find(x => x.type === 'text')?.text || 'Imageboard 请求失败。');
+  if (result.isError) {
+    const error = new Error(result.structuredContent?.error || result.content?.find(x => x.type === 'text')?.text || 'Imageboard 请求失败。');
+    error.statusCode = result.structuredContent?.statusCode;
+    throw error;
+  }
   return result.structuredContent;
 }
 function base64(bytes) {
@@ -33,6 +43,9 @@ async function response(result) {
   } finally { void call('imageboard_transfer', { action: 'release', id }).catch(() => {}); }
 }
 window.__IMAGEBOARD_MCP__ = {
+  ready,
+  getHostContext: () => app.getHostContext(),
+  getGeneration: (jobId, waitSeconds = 20) => call('get_generation', { jobId, waitSeconds, includeImage: false }),
   async download(blob, name) {
     await ready;
     if (!app.getHostCapabilities()?.downloadFile) return false;

@@ -5,19 +5,23 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createBridge } from './mcp-bridge.mjs';
-import { mcpDocument } from './embed.mjs';
+import { mcpDocument, generationDocument } from './embed.mjs';
 import { UI_CSP } from './ui-policy.mjs';
 import { chatTools, createChatTools } from './mcp-chat.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const resourceUri = `ui://imageboard/studio-${version}.html`;
+const generationUri = `ui://imageboard/generation-${version}.html`;
 const mimeType = 'text/html;profile=mcp-app';
 const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#808080" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m3 16 5-5 5 5 4-4 4 4"/></svg>');
 const icons = [{ src: icon, mimeType: 'image/svg+xml' }];
 const appOnly = { ui: { resourceUri, visibility: ['app'] }, 'openai/widgetAccessible': true };
 const tools = [
-  ...chatTools,
+  ...chatTools.map(tool => tool.name === 'generate_image' ? { ...tool, _meta: {
+    ui: { resourceUri: generationUri }, 'openai/outputTemplate': generationUri,
+    'openai/toolInvocation/invoking': '正在提交图片创作', 'openai/toolInvocation/invoked': '图片任务已提交',
+  } } : tool),
   { name: 'open_imageboard', title: 'Imageboard', description: '打开 Imageboard 生图工作室，使用用户自己的 Codex API 配置。', icons,
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
@@ -33,10 +37,13 @@ const bridge = createBridge();
 const chat = createChatTools({ bridge });
 const server = new Server({ name: 'imageboard', title: 'Imageboard', version, icons }, { capabilities: { tools: {}, resources: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
-server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [{ uri: resourceUri, name: 'Imageboard', mimeType }] }));
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [
+  { uri: resourceUri, name: 'Imageboard', mimeType },
+  { uri: generationUri, name: 'Imageboard 图片创作', mimeType },
+] }));
 server.setRequestHandler(ReadResourceRequestSchema, async ({ params }) => {
-  if (params.uri !== resourceUri) throw new Error('Unknown Imageboard resource');
-  return { contents: [{ uri: resourceUri, mimeType, text: await mcpDocument(root), _meta: { ui: { prefersBorder: false, csp: UI_CSP } } }] };
+  if (![resourceUri, generationUri].includes(params.uri)) throw new Error('Unknown Imageboard resource');
+  return { contents: [{ uri: params.uri, mimeType, text: await (params.uri === generationUri ? generationDocument(root) : mcpDocument(root)), _meta: { ui: { prefersBorder: false, csp: UI_CSP } } }] };
 });
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
   try {
