@@ -45,6 +45,7 @@ async function response(result) {
 window.__IMAGEBOARD_MCP__ = {
   ready,
   getHostContext: () => app.getHostContext(),
+  requestDisplayMode: async mode => { await ready; return app.requestDisplayMode({ mode }); },
   getGeneration: (jobId, waitSeconds = 20) => call('get_generation', { jobId, waitSeconds, includeImage: false }),
   async download(blob, name) {
     await ready;

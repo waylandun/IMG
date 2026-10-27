@@ -16,11 +16,11 @@
 
 | 系统 | 最近构建的安装文件 |
 | --- | --- |
-| macOS，M 系列芯片 | `Imageboard-0.6.1-mac-arm64.dmg` |
+| macOS，M 系列芯片 | `Imageboard-0.6.2-mac-arm64.dmg` |
 | macOS，Intel 芯片 | `Imageboard-0.4.1-mac-x64.dmg` |
 | Windows，x64 | `Imageboard-0.4.1-win-x64.exe` |
 
-本次 0.6.1 构建覆盖 macOS Apple Silicon；表中的 Intel 和 Windows 旧安装包不包含普通聊天生图，需另行构建对应平台新版。
+本次 0.6.2 构建覆盖 macOS Apple Silicon；表中的 Intel 和 Windows 旧安装包不包含普通聊天生图，需另行构建对应平台新版。
 
 首次运行 Imageboard 完成 MCP 注册，然后重新打开 Codex，在左侧「更多」中找到 Imageboard 并固定一次。以后直接打开 Codex、点击侧栏图标即可使用。安装包内置运行环境，普通用户不需要 Node.js、npm 或独立 Codex CLI。
 
@@ -165,7 +165,7 @@ MCP 发现和读取页面资源不会调用图片服务或生图 API。多个窗
 
 ## 开发状态与验证
 
-0.6.1 为聊天结果增加明确的图片 Markdown，并为创建工具绑定独立的 MCP 创作卡片。已通过 65 项回归测试、成品自检、签名和 DMG 检查，以及浏览器模拟宿主中的生成中、完成、失败、读图重试、下载和窄屏验证。卡片是否显示在聊天内由宿主支持决定；详见 [0.6.1 验证说明](docs/0.6.1-testing.md)。
+0.6.2 保留聊天生成过程卡片，改用 MCP Apps fullscreen 展示原图，宿主不支持时回退为卡片内自适应预览，并移除 iframe 内部原图对话框。已通过 65 项回归测试和模拟宿主点击验证；详见 [0.6.2 验证说明](docs/0.6.2-testing.md)。
 
 2026-10-26，0.6.0 macOS Apple Silicon 通过 65 项自动测试、成品应用自检、签名验证和 DMG 完整性检查。已完成本机覆盖安装，核对作品与渠道数据保留，并通过安装版 MCP 验证聊天工具发现和服务按需启动。自动生图测试使用模拟网关，未调用真实付费图片接口。
 

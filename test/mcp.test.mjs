@@ -31,6 +31,8 @@ test('MCP discovery and resource loading do not start the image service or expos
   assert.deepEqual(card.contents[0]._meta.ui.csp, { connectDomains: [], resourceDomains: ['data:', 'blob:'] });
   assert.ok(card.contents[0].text.includes('imageboard-tool-result'));
   assert.ok(card.contents[0].text.includes('generation-card'));
+  assert.ok(card.contents[0].text.includes('requestDisplayMode'));
+  assert.ok(!card.contents[0].text.includes('<dialog'));
   assert.equal((card.contents[0].text.match(/<script\b/g) || []).length, 1);
   assert.equal((card.contents[0].text.match(/<\/script>/g) || []).length, 1);
   assert.ok(!card.contents[0].text.includes('127.0.0.1:'));

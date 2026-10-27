@@ -82,6 +82,7 @@ const server = http.createServer(async (req, res) => {
       const frame=document.getElementById('app'), status=document.getElementById('status');let ready=false;
       const send=(method,params)=>frame.contentWindow.postMessage({jsonrpc:'2.0',method,params},'*');
       async function post(route,data){return fetch(route,{method:'POST',body:JSON.stringify(data||{})}).then(r=>r.json());}
+      let displayMode='inline';
       addEventListener('message',async event=>{
         if(event.source!==frame.contentWindow||event.origin!=='null')return;
         const message=event.data;
@@ -89,7 +90,8 @@ const server = http.createServer(async (req, res) => {
         if(message.method==='ui/notifications/size-changed'){if(message.params.height)frame.style.height=Math.min(1000,Math.max(180,message.params.height))+'px';return;}
         if(message.id===undefined)return;let result;
         try{
-          if(message.method==='ui/initialize')result={protocolVersion:message.params.protocolVersion,hostInfo:{name:'Imageboard inline verification',version:'1'},hostCapabilities:{serverTools:{},downloadFile:{}},hostContext:{displayMode:'inline',availableDisplayModes:['inline','fullscreen'],theme:document.getElementById('theme').value,platform:'desktop'}};
+          if(message.method==='ui/initialize')result={protocolVersion:message.params.protocolVersion,hostInfo:{name:'Imageboard inline verification',version:'1'},hostCapabilities:{serverTools:{},downloadFile:{}},hostContext:{displayMode,availableDisplayModes:['inline','fullscreen'],theme:document.getElementById('theme').value,platform:'desktop'}};
+          else if(message.method==='ui/request-display-mode'){displayMode=['inline','fullscreen'].includes(message.params.mode)?message.params.mode:displayMode;frame.contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/host-context-changed',params:{displayMode,availableDisplayModes:['inline','fullscreen']}},'*');result={mode:displayMode};}
           else if(message.method==='tools/call')result=await post('/rpc',message.params);
           else if(message.method==='ui/download-file'){const saved=await post('/rpc',{name:'__download',arguments:message.params.contents[0].resource});status.textContent='已下载 '+saved.bytes+' 字节';result={};}
           else result={};

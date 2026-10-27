@@ -4,12 +4,15 @@ const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const terminal = job => ['completed', 'failed', 'cancelled'].includes(job?.status);
 const labels = { refining: '正在理解需求', generating: '正在创建图像', completed: '图片已生成', failed: '生成失败', cancelled: '已停止' };
 let job, jobId, epoch = 0, pollTimer, elapsedTimer, polling = false, disposed = false, retries = 0;
-let blob, objectUrl, loadedId, loadingId, pendingInput;
+let blob, objectUrl, loadedId, loadingId, pendingInput, viewerMode = false, fullscreenRequested = false;
 
 function hostContext(context = {}) {
   if (['dark', 'light'].includes(context.theme)) document.documentElement.dataset.theme = context.theme;
   if (context.displayMode) document.documentElement.dataset.displayMode = context.displayMode;
   if (context.availableDisplayModes) document.documentElement.dataset.availableDisplayModes = context.availableDisplayModes.join(',');
+  if (viewerMode && fullscreenRequested && context.displayMode && context.displayMode !== 'fullscreen') {
+    fullscreenRequested = false; setViewerMode(false);
+  }
 }
 const darkPreference = matchMedia('(prefers-color-scheme: dark)');
 document.documentElement.dataset.theme = darkPreference.matches ? 'dark' : 'light';
@@ -21,12 +24,19 @@ function elapsed() {
   const seconds = Math.max(0, Math.floor((end - start) / 1000));
   byId('elapsed').textContent = Number.isFinite(seconds) ? seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒` : '';
 }
+function setViewerMode(active) {
+  viewerMode = active;
+  document.querySelector('.generation-card').classList.toggle('viewer-mode', active);
+  byId('close-viewer').hidden = !active;
+  byId('view-image').setAttribute('aria-label', active ? '退出原图查看' : '查看原图');
+  if (active) byId('note').textContent = '原图查看 · 点击返回卡片';
+}
 function releaseImage() {
-  byId('result-image').removeAttribute('src'); byId('original-image').removeAttribute('src');
+  setViewerMode(false); fullscreenRequested = false;
+  byId('result-image').removeAttribute('src');
   if (objectUrl) URL.revokeObjectURL(objectUrl);
   blob = objectUrl = loadedId = loadingId = undefined;
   byId('download').hidden = true;
-  if (byId('viewer').open) byId('viewer').close();
 }
 function issue(message, { retry = false, title = '暂时无法读取图片' } = {}) {
   byId('note').textContent = message;
@@ -56,7 +66,7 @@ async function loadImage(data, token) {
     if (disposed || epoch !== token) { URL.revokeObjectURL(url); return; }
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = url; blob = nextBlob; loadedId = asset.assetId;
-    byId('result-image').src = url; byId('original-image').src = url;
+    byId('result-image').src = url;
     byId('stage').className = 'stage complete'; byId('stage').setAttribute('aria-busy', 'false');
     byId('placeholder').hidden = true; byId('result').hidden = false;
     byId('download').hidden = false; byId('retry').hidden = true;
@@ -133,8 +143,27 @@ byId('retry').addEventListener('click', () => {
   if (terminal(job) && job.images?.length) void loadImage(job, epoch);
   else void refresh();
 });
-byId('view-image').addEventListener('click', () => { if (loadedId) byId('viewer').showModal(); });
-byId('close-viewer').addEventListener('click', () => byId('viewer').close());
+async function openViewer() {
+  if (!loadedId) return;
+  if (viewerMode) { await closeViewer(); return; }
+  const context = transport.getHostContext?.() || {};
+  const modes = Array.isArray(context.availableDisplayModes) ? context.availableDisplayModes : [];
+  if (modes.includes('fullscreen') && transport.requestDisplayMode) {
+    try {
+      const result = await transport.requestDisplayMode('fullscreen');
+      if (result?.mode === 'fullscreen') fullscreenRequested = true;
+    } catch { /* Fall back to the responsive card view. */ }
+  }
+  setViewerMode(true);
+}
+async function closeViewer() {
+  if (fullscreenRequested && transport.requestDisplayMode) {
+    try { await transport.requestDisplayMode('inline'); } catch { /* The host may already have left fullscreen. */ }
+  }
+  fullscreenRequested = false; setViewerMode(false);
+}
+byId('view-image').addEventListener('click', () => { void openViewer(); });
+byId('close-viewer').addEventListener('click', () => { void closeViewer(); });
 byId('download').addEventListener('click', async () => {
   if (!blob || !loadedId) return;
   byId('download').disabled = true;
@@ -145,6 +174,6 @@ byId('download').addEventListener('click', async () => {
   finally { byId('download').disabled = false; }
 });
 window.addEventListener('pagehide', () => {
-  disposed = true; epoch++; clearTimeout(pollTimer); clearInterval(elapsedTimer); releaseImage();
+  disposed = true; epoch++; clearTimeout(pollTimer); clearInterval(elapsedTimer); setViewerMode(false); releaseImage();
 });
 transport.ready.then(() => hostContext(transport.getHostContext())).catch(() => issue('无法连接图片服务，请重新打开这张创作卡片。'));
